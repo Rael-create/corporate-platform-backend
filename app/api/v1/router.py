@@ -1,0 +1,17 @@
+from flask import Blueprint
+
+from app.api.v1.endpoints.corporates_routes import corporate_bp
+from app.api.v1.endpoints.users_routes import users_bp
+from app.api.v1.endpoints.ride_request_routes import ride_request_bp
+from app.api.v1.endpoints.rates_route import rates_bp
+from app.api.v1.endpoints.wallet_route import wallet_bp
+from app.api.v1.endpoints.ledger_entry_route import ledger_bp
+
+def register_blueprints(app):
+    app.register_blueprint(corporate_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(ride_request_bp)
+    app.register_blueprint(rates_bp)
+    app.register_blueprint(wallet_bp)
+    app.register_blueprint(ledger_bp)
+    
