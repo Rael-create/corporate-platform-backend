@@ -68,6 +68,9 @@ def create_user(data):
                 
                 user_id=new_user.user_id,
                 corporate_id=new_user.corporate_id,
+                
+                max_rides=data.get("max_rides"),
+                max_amount=data.get("max_amount")
             )
             db.session.add(new_staff)    
         db.session.commit()

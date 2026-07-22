@@ -2,8 +2,9 @@ from app.core.database import db
 from datetime import datetime
 
 WALLET_TYPES = [
-    "PLATFORM WALLET",
-    "CORPORATE WALLET"
+    "CORPORATE_FUNDED",    # Company deposits their own money
+    "PLATFORM_WALLET",  # Platform gives them credit
+    "PLATFORM_REVENUE"     # System wallet for platform earnings
 ]
 
 class Corporate(db.Model):

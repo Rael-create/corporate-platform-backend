@@ -2,40 +2,46 @@ from marshmallow import Schema, fields, validate
 from app.models.ride_request import RideStatus 
 
 
-# 1. Schema for CREATING a ride (Strict validation)
+# Schema for CREATING a ride 
 class CreateRideRequestSchema(Schema):
     staff_id = fields.Int(required=True)
     pickup_location = fields.Str(required=True)
     destination = fields.Str(required=True)
-    ride_date = fields.DateTime(required=True)
-    estimated_fare = fields.Float(required=True)
+    base_fare = fields.Float(required=True)
+    matatu_identifier = fields.Str(required=True)
     reason = fields.Str(allow_none=True)
 
-# 2. Schema for UPDATING a ride (All fields optional)
+#  Schema for UPDATING a ride 
 class UpdateRideRequestSchema(Schema):
     pickup_location = fields.Str()
     destination = fields.Str()
-    ride_date = fields.DateTime()
-    estimated_fare = fields.Float()
+    matatu_identifier = fields.Str()
+    base_fare = fields.Float()
+    status = fields.String(validate=validate.OneOf(RideStatus))
+    payment_status = fields.Str()
     reason = fields.Str()
 
-# 3. Schema for the RESPONSE (Hides internal logic, formats output)
+
+# Schema for the RESPONSE 
 class RideRequestResponseSchema(Schema):
     ride_id = fields.Int(dump_only=True)
     staff_id = fields.Int(dump_only=True)
     corporate_id = fields.Int(dump_only=True)
-    status = fields.Enum(RideStatus, by_value=True, dump_only=True) 
-    actual_fare = fields.Float(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
     
+    status = fields.String(dump_only=True) 
+
     pickup_location = fields.Str()
     destination = fields.Str()
-    ride_date = fields.DateTime()
-    estimated_fare = fields.Float()
     reason = fields.Str()
+    matatu_identifier = fields.Str()
+    payment_status = fields.Str()
     
-    vat_rate = fields.Float(dump_only=True)
-    commission_rate = fields.Float(dump_only=True)
-    vat_amount = fields.Float(dump_only=True)
-    commission_amount = fields.Float(dump_only=True)
+    base_fare = fields.Float()
+    vat_rate = fields.Float()
+    commission_rate = fields.Float()
+    vat_amount = fields.Float()
+    commission_amount = fields.Float()
+    total_fare = fields.Float()
+    matatu_payout = fields.Float()

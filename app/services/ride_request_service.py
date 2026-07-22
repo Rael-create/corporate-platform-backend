@@ -1,10 +1,12 @@
+from sqlalchemy import func
+
 from app.core.database import db
 from app.models.ride_request import RideRequest, RideStatus
 from app.models.staff import Staff
 from app.models.rates import Rate, RateType
 
 
-def calculate_actual_fare(base_fare):
+def calculate_total_fare(base_fare):
     
     # write check to make sure commision and rates are available
     vat_type = RateType.query.filter_by(name='VAT').first()
@@ -29,9 +31,10 @@ def calculate_actual_fare(base_fare):
     vat_amount = base_fare * vat_rate
     commission_amount = base_fare * commission_rate
     
-    actual_fare = base_fare + vat_amount + commission_amount
+    total_fare = base_fare + vat_amount + commission_amount
+    matatu_payout = base_fare
     
-    return actual_fare,vat_rate,commission_rate,vat_amount,commission_amount
+    return total_fare,vat_rate,commission_rate,vat_amount,commission_amount, matatu_payout
 
 
 def create_ride(data):
@@ -40,9 +43,23 @@ def create_ride(data):
     if not staff:
         raise ValueError("Staff not found")
 
-    # 2. Calculate actual fare using the helper function
-    base_fare = float(data["estimated_fare"])
-    actual_fare, vat_rate, commission_rate, vat_amount, commission_amount = calculate_actual_fare(base_fare)
+    # 2. Calculate total fare using the helper function
+    base_fare = float(data["base_fare"])
+        # Check ride count limit
+    if staff.max_rides is not None:
+        current_rides = RideRequest.query.filter_by(staff_id=staff.staff_id).count()
+        if current_rides >= staff.max_rides:
+            raise ValueError(f"Staff has reached maximum ride limit of {staff.max_rides}")
+
+    # Check amount limit
+    if staff.max_amount is not None:
+        total_spent = db.session.query(func.sum(RideRequest.base_fare))\
+            .filter_by(staff_id=staff.staff_id).scalar() or 0.0
+        if total_spent + base_fare > staff.max_amount:
+            raise ValueError(f"Staff has exceeded maximum amount limit of {staff.max_amount}")
+
+    
+    total_fare, vat_rate, commission_rate, vat_amount, commission_amount, matatu_payout = calculate_total_fare(base_fare)
     
     # 3. Create the ride (Status is instantly APPROVED)
     new_ride = RideRequest(
@@ -50,15 +67,16 @@ def create_ride(data):
         corporate_id=staff.corporate_id, 
         pickup_location=data["pickup_location"],
         destination=data["destination"],
-        estimated_fare=base_fare,
-        actual_fare=actual_fare,
+        matatu_identifier=data.get("matatu_identifier"),
+        base_fare=base_fare,
+        total_fare=total_fare,
         vat_rate=vat_rate,
         commission_rate=commission_rate,
         vat_amount=vat_amount,
-        commission_amount=commission_amount,    
+        commission_amount=commission_amount,  
+        matatu_payout=matatu_payout,  
         reason=data.get("reason"),
-        ride_date=data["ride_date"],
-        status=RideStatus.APPROVED
+        status="PENDING"
     )
     
     #Implement payment triggers and notifications here in the future
@@ -76,6 +94,41 @@ def get_ride(ride_id):
     ride = RideRequest.query.get(ride_id)
     if not ride:
         raise ValueError("Ride not found")
+    return ride
+
+def update_ride(ride_id, data):
+    ride = RideRequest.query.get(ride_id)
+    if not ride:
+        raise ValueError("Ride not found")
+        
+    # Update basic fields if they are provided in the request
+    if "pickup_location" in data:
+        ride.pickup_location = data["pickup_location"]
+    if "destination" in data:
+        ride.destination = data["destination"]
+    if "matatu_identifier" in data:
+        ride.matatu_identifier = data["matatu_identifier"]
+    if "reason" in data:
+        ride.reason = data["reason"]
+    if "status" in data:
+        ride.status = data["status"]
+    if "payment_status" in data:
+        ride.payment_status = data["payment_status"]
+        
+    # If the base fare changes, recalculate all financial breakdowns
+    if "base_fare" in data:
+        base_fare = float(data["base_fare"])
+        total_fare, vat_rate, commission_rate, vat_amount, commission_amount, matatu_payout = calculate_total_fare(base_fare)
+        
+        ride.base_fare = base_fare
+        ride.total_fare = total_fare
+        ride.vat_rate = vat_rate
+        ride.commission_rate = commission_rate
+        ride.vat_amount = vat_amount
+        ride.commission_amount = commission_amount
+        ride.matatu_payout = matatu_payout
+        
+    db.session.commit()
     return ride
 
 

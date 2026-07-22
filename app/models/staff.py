@@ -14,7 +14,11 @@ class  Staff(db.Model):
     location = db.Column(db.String(100), nullable=False)
     address = db.Column(db.String(200), nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    max_rides = db.Column(db.Integer, nullable=True)
+    max_amount = db.Column(db.Float, nullable=True)
+    
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
     #Link Connects the Staff profile to a User login

@@ -1,6 +1,10 @@
 from marshmallow import Schema, fields, validate
 
-WALLET_TYPES = ["PLATFORM WALLET", "CORPORATE WALLET"]
+WALLET_TYPES = [
+    "CORPORATE_FUNDED",    # Company deposits their own money
+    "PLATFORM_ALLOCATED",  # Platform gives them credit
+    "PLATFORM_REVENUE"     # System wallet for platform earnings
+]
 
 class CorporateSchema(Schema):
     corporate_id = fields.Int(dump_only =True)

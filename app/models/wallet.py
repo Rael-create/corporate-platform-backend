@@ -4,8 +4,8 @@ import enum
 
 
 WALLET_TYPES = [
-    "CORPORATE_FUNDED",    # Company deposits their own money
-    "PLATFORM_ALLOCATED",  # Platform gives them credit
+    "CORPORATE_FUNDED",    # Company deposits their own money *CORPORATE PREPAID*
+    "PLATFORM_WALLET",  # Platform gives them credit *MASTER WALLET*,,PLATFORM MASTER
     "PLATFORM_REVENUE"     # System wallet for platform earnings
 ]
 
@@ -16,7 +16,7 @@ class Wallet(db.Model):
     
     corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=True)
     
-    wallet_type = db.Column(db.Enum(*WALLET_TYPES), nullable=False, default="PLATFORM_ALLOCATED")
+    wallet_type = db.Column(db.Enum(*WALLET_TYPES), nullable=False, default="PLATFORM_WALLET")
     currency = db.Column(db.String(3), default='KES', nullable=False)
     
     current_balance = db.Column(db.Float, default=0.0, nullable=False)

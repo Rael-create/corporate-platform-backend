@@ -28,4 +28,7 @@ class NewUserSchema(Schema):
     address = fields.Str(required=False)
     phone_number = fields.Str(required=False)
 
+    max_rides = fields.Int(required=False, allow_none=True)
+    max_amount = fields.Float(required=False, allow_none=True)
+    
     created_at = fields.DateTime(dump_only=True)
