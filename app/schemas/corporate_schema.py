@@ -5,7 +5,7 @@ WALLET_TYPES = [
     "PLATFORM_ALLOCATED",  # Platform gives them credit
     "PLATFORM_REVENUE"     # System wallet for platform earnings
 ]
-
+ 
 class CorporateSchema(Schema):
     corporate_id = fields.Int(dump_only =True)
     corporate_name = fields.Str(required=True)
