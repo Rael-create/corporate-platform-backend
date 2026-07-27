@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
 
 from app.services.corporate_service import create_corporate, delete_corporate, update_corporate
 from app.schemas.corporate_schema import CorporateSchema
@@ -11,8 +12,11 @@ corporate_bp = Blueprint(
 
 corporate_schema = CorporateSchema()
 
+
 @corporate_bp.route("/create", methods=["POST"])
+@jwt_required()
 def create_new_corporate():
+    # check here
 
     data = request.get_json()
 
@@ -28,6 +32,7 @@ def create_new_corporate():
     )
 
 @corporate_bp.route("/delete/<int:corporate_id>", methods=["DELETE"])
+@jwt_required()
 def remove_corporate(corporate_id):
     try:
         result = delete_corporate(corporate_id)
@@ -51,6 +56,7 @@ def remove_corporate(corporate_id):
         
 #update corporate
 @corporate_bp.route("/update/<int:corporate_id>", methods=["PUT"])
+@jwt_required()
 def update_existing_corporate(corporate_id):
     try:
         data = request.get_json()

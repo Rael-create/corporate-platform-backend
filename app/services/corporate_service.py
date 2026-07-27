@@ -3,6 +3,7 @@ from app.core.database import db
 from sqlalchemy.exc import IntegrityError
 
 
+
 def create_corporate(data):
     new_corporate = Corporate(
         corporate_name=data['corporate_name'],
@@ -36,6 +37,7 @@ def delete_corporate(corporate_id):
     
 #update corporate details
 def update_corporate(corporate_id, data):
+    
     corporate = Corporate.query.get(corporate_id)
 
     if not corporate:

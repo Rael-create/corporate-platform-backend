@@ -3,8 +3,14 @@ from datetime import datetime
 
 WALLET_TYPES = [
     "CORPORATE_FUNDED",    # Company deposits their own money
-    "PLATFORM_WALLET",  # Platform gives them credit
+    "PLATFORM_FUNDED",  # Platform gives them credit
     "PLATFORM_REVENUE"     # System wallet for platform earnings
+]
+
+CorporateStatus = [
+    "ACTIVE",
+    "INACTIVE"
+
 ]
 
 class Corporate(db.Model):
@@ -15,8 +21,10 @@ class Corporate(db.Model):
     location = db.Column(db.String(100), nullable=False)
     address = db.Column(db.String(200), nullable=False)
     contacts = db.Column(db.String(100), nullable=False)
-    wallet_type = db.Column(db.String(200), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    wallet_type = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.Enum(*CorporateStatus),default="ACTIVE", nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     #One Corporate can have many Users
     users = db.relationship("User", backref="corporate", lazy=True, cascade="all, delete-orphan")

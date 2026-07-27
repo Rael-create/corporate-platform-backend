@@ -11,6 +11,7 @@ class CreateWalletSchema(Schema):
         )
     )
     currency = fields.Str(load_default='KES')
+    current_balance = fields.Float(load_default=0.0) 
     created_by = fields.Int(required=True)
     
     

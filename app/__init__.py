@@ -1,3 +1,5 @@
+from flask_jwt_extended import JWTManager
+
 from flask import Flask
 from flask_migrate import Migrate
 from flasgger import Swagger
@@ -14,6 +16,10 @@ def create_app():
 
     # Load configuration
     app.config.from_object(Config)
+
+    app.config["JWT_SECRET_KEY"] = "super-secret-key-change-later" 
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600 # Token lasts 1 hour
+    JWTManager(app)
 
     # Initialize database
     db.init_app(app)
@@ -46,6 +52,7 @@ def create_app():
     from app.models.ride_request import RideRequest
     from app.models.rates import RateType, Rate
     from app.models.wallet import Wallet
+    from app.models.ride_counter import RideCounter
 
 
     return app

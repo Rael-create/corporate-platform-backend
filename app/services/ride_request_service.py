@@ -1,89 +1,70 @@
 from sqlalchemy import func
-
 from app.core.database import db
 from app.models.ride_request import RideRequest, RideStatus
 from app.models.staff import Staff
 from app.models.rates import Rate, RateType
+from app.models.wallet import Wallet
+from app.models.ledger_entry import LedgerEntry
+from app.schemas.gateway_payouts_schema import GatewayPayoutResponseSchema
+from app.services.dispatch_to_gateway import dispatch_to_gateway
+from app.services.ledger_entry_service import create_ledger_entry
+from app.services.auth_service import TripAuthorizationEngine
+from app.services.ride_counter_service import update_ride_counter
+from app.schemas.ledger_entry_schema import LedgerEntryResponseSchema
+from app.schemas.ride_request_schema import RideRequestResponseSchema
 
+# from app.schemas.users_schema import NewUserSchema
 
-def calculate_total_fare(base_fare):
-    
-    # write check to make sure commision and rates are available
-    vat_type = RateType.query.filter_by(name='VAT').first()
-    
-    vat_rate = float(
-                Rate.query
-                .filter_by(rate_type_id=vat_type.rate_type_id)
-                .order_by(Rate.created_at.desc())
-                .first().rate
-                )
-    
-    comm_type = RateType.query.filter_by(name='COMMISSION').first()
-    
-    commission_rate = float(
-                Rate.query
-                .filter_by(rate_type_id=comm_type.rate_type_id)
-                .order_by(Rate.created_at.desc())
-                .first().rate
-                )
-
-    
-    vat_amount = base_fare * vat_rate
-    commission_amount = base_fare * commission_rate
-    
-    total_fare = base_fare + vat_amount + commission_amount
-    matatu_payout = base_fare
-    
-    return total_fare,vat_rate,commission_rate,vat_amount,commission_amount, matatu_payout
+# instatiate schemas
+ledger_entry_resp = LedgerEntryResponseSchema()
+ride_req_resp = RideRequestResponseSchema()
+payoutschema = GatewayPayoutResponseSchema()
 
 
 def create_ride(data):
     # 1. Verify staff exists
     staff = Staff.query.get(data["staff_id"])
+    base_fare = float(data["base_fare"])
+
     if not staff:
         raise ValueError("Staff not found")
 
-    # 2. Calculate total fare using the helper function
-    base_fare = float(data["base_fare"])
-        # Check ride count limit
-    if staff.max_rides is not None:
-        current_rides = RideRequest.query.filter_by(staff_id=staff.staff_id).count()
-        if current_rides >= staff.max_rides:
-            raise ValueError(f"Staff has reached maximum ride limit of {staff.max_rides}")
+    auth_ride = TripAuthorizationEngine(staff, base_fare, db_session=db, data=data)
+    _, auth_message, new_ride, new_payout = auth_ride.authorize_and_create_ride()
+    # add to rides_used counter
 
-    # Check amount limit
-    if staff.max_amount is not None:
-        total_spent = db.session.query(func.sum(RideRequest.base_fare))\
-            .filter_by(staff_id=staff.staff_id).scalar() or 0.0
-        if total_spent + base_fare > staff.max_amount:
-            raise ValueError(f"Staff has exceeded maximum amount limit of {staff.max_amount}")
+    if not new_ride:
+        db.session.rollback()
+        raise ValueError(auth_message)
 
-    
-    total_fare, vat_rate, commission_rate, vat_amount, commission_amount, matatu_payout = calculate_total_fare(base_fare)
-    
-    # 3. Create the ride (Status is instantly APPROVED)
-    new_ride = RideRequest(
-        staff_id=staff.staff_id,
-        corporate_id=staff.corporate_id, 
-        pickup_location=data["pickup_location"],
-        destination=data["destination"],
-        matatu_identifier=data.get("matatu_identifier"),
-        base_fare=base_fare,
-        total_fare=total_fare,
-        vat_rate=vat_rate,
-        commission_rate=commission_rate,
-        vat_amount=vat_amount,
-        commission_amount=commission_amount,  
-        matatu_payout=matatu_payout,  
-        reason=data.get("reason"),
-        status="PENDING"
+    # payment gateway
+    dispatch_to_gateway(ride=new_ride, payout=new_payout, db=db,simulate_failure=False)
+
+    auth_ride.update_rides_used()
+
+    # push info to ledger
+    ledger_entry = create_ledger_entry(
+        data={
+            "corporate_id": staff.corporate_id,
+            "ride_id": new_ride.ride_id,
+            "transaction_type": "TRIP_DEDUCTION",
+            "transaction_class": "Debit",
+            "amount": new_ride.total_fare,
+        }
     )
-    
-    #Implement payment triggers and notifications here in the future
+    # update rides used
+    update_ride_counter(staff.staff_id, new_ride.total_fare)
 
-    db.session.add(new_ride)
-    db.session.commit()
-    return new_ride
+    return {
+        "message": auth_message,
+        "new_ride": ride_req_resp.dump(new_ride),
+        "gateway_payout": payoutschema.dump(new_payout),
+        "staff_details": {
+            "rides_used": staff.rides_used,
+            "rides_allocated": staff.rides_allocated,
+        },
+        "ledger_entry": ledger_entry_resp.dump(ledger_entry),
+    }
 
 
 def get_all_rides():
@@ -96,11 +77,76 @@ def get_ride(ride_id):
         raise ValueError("Ride not found")
     return ride
 
+
+def settle_ride(ride_id):
+    ride = RideRequest.query.get(ride_id)
+    if not ride:
+        raise ValueError("Ride not found")
+    if ride.status != "COMPLETED":
+        raise ValueError("Ride must be marked as COMPLETED before settlement.")
+
+    # 1. Find the Corporate's Wallet (Accepts either CORPORATE_FUNDED or PLATFORM_FUNDED)
+    corp_wallet = Wallet.query.filter(
+        Wallet.corporate_id == ride.corporate_id,
+        Wallet.wallet_type.in_(["CORPORATE_FUNDED", "PLATFORM_FUNDED"]),
+    ).first()
+
+    if not corp_wallet:
+        raise ValueError(
+            f"Corporate wallet not found for corporate_id {ride.corporate_id}."
+        )
+    if corp_wallet.current_balance < ride.total_fare:
+        raise ValueError(
+            f"Insufficient funds. Required: {ride.total_fare}, Available: {corp_wallet.current_balance}"
+        )
+
+    # 2. Find the Platform's Wallet (For receiving commission/VAT)
+    plat_wallet = Wallet.query.filter_by(wallet_type="PLATFORM_FUNDED").first()
+    if not plat_wallet:
+        raise ValueError("Platform wallet not configured.")
+
+    # 3. Update Wallet Balances
+    corp_wallet.current_balance -= ride.total_fare
+    plat_wallet.current_balance += ride.commission_amount + ride.vat_amount
+
+    # 4. Create Ledger Entries
+
+    # Entry 1: TRIP_DEDUCTION (money leaving corporate wallet)
+    db.session.add(
+        LedgerEntry(
+            corporate_id=ride.corporate_id,
+            wallet_id=corp_wallet.wallet_id,
+            ride_id=ride.ride_id,
+            transaction_type="TRIP_DEDUCTION",
+            transaction_class="Debit",
+            amount=ride.total_fare,
+        )
+    )
+
+    # Entry 2: COMMISSION_CHARGE (platform earning commission + VAT)
+    db.session.add(
+        LedgerEntry(
+            corporate_id=ride.corporate_id,
+            wallet_id=plat_wallet.wallet_id,
+            ride_id=ride.ride_id,
+            transaction_type="COMMISSION_CHARGE",
+            transaction_class="Credit",
+            amount=(ride.commission_amount + ride.vat_amount),
+        )
+    )
+
+    db.session.commit()
+    return {"message": "Ride settled successfully", "total_deducted": ride.total_fare}
+
+
 def update_ride(ride_id, data):
     ride = RideRequest.query.get(ride_id)
     if not ride:
         raise ValueError("Ride not found")
-        
+
+    # Track if status is changing to COMPLETED
+    old_status = ride.status
+
     # Update basic fields if they are provided in the request
     if "pickup_location" in data:
         ride.pickup_location = data["pickup_location"]
@@ -112,14 +158,19 @@ def update_ride(ride_id, data):
         ride.reason = data["reason"]
     if "status" in data:
         ride.status = data["status"]
-    if "payment_status" in data:
-        ride.payment_status = data["payment_status"]
-        
+
     # If the base fare changes, recalculate all financial breakdowns
     if "base_fare" in data:
         base_fare = float(data["base_fare"])
-        total_fare, vat_rate, commission_rate, vat_amount, commission_amount, matatu_payout = calculate_total_fare(base_fare)
-        
+        (
+            total_fare,
+            vat_rate,
+            commission_rate,
+            vat_amount,
+            commission_amount,
+            matatu_payout,
+        ) = calculate_total_fare(base_fare)
+
         ride.base_fare = base_fare
         ride.total_fare = total_fare
         ride.vat_rate = vat_rate
@@ -127,9 +178,15 @@ def update_ride(ride_id, data):
         ride.vat_amount = vat_amount
         ride.commission_amount = commission_amount
         ride.matatu_payout = matatu_payout
-        
+
     db.session.commit()
-    return ride
+
+    # TRIGGER SETTLEMENT IF STATUS CHANGED TO COMPLETED
+    if old_status != "COMPLETED" and data.get("status") == "COMPLETED":
+        settlement_result = settle_ride(ride_id)
+        return ride, settlement_result
+
+    return ride, None
 
 
 def delete_ride(ride_id):

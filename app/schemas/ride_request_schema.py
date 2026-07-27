@@ -18,7 +18,6 @@ class UpdateRideRequestSchema(Schema):
     matatu_identifier = fields.Str()
     base_fare = fields.Float()
     status = fields.String(validate=validate.OneOf(RideStatus))
-    payment_status = fields.Str()
     reason = fields.Str()
 
 
@@ -36,7 +35,6 @@ class RideRequestResponseSchema(Schema):
     destination = fields.Str()
     reason = fields.Str()
     matatu_identifier = fields.Str()
-    payment_status = fields.Str()
     
     base_fare = fields.Float()
     vat_rate = fields.Float()

@@ -36,7 +36,7 @@ class RideRequest(db.Model):
     matatu_payout = db.Column(db.Float, nullable=True)
     
     status = db.Column(db.Enum(*RideStatus), default="PENDING", nullable=False)
-    payment_status =db.Column(db.String(50), nullable=True)
+    
     
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)

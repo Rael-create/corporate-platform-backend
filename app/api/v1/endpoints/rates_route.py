@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.models.rates import RateType, Rate
+from flask_jwt_extended import jwt_required
 from app.services.rates_service import (
     create_rate_type,
     get_all_rate_types,
@@ -20,6 +20,7 @@ rate_schema_many = RateSchema(many=True)
 
 # Rate_type routes
 @rates_bp.route("/rate-types", methods=["POST"])
+@jwt_required()
 def add_rate_type():
     data = request.get_json()
     errors = type_schema.validate(data)
@@ -33,6 +34,7 @@ def add_rate_type():
         return jsonify({"message": str(e)}), 409
     
 @rates_bp.route("/rate-types", methods=["GET"])
+@jwt_required()
 def list_rate_types():
     types = get_all_rate_types()
     return jsonify(type_schema.dump(types, many=True)), 200
@@ -41,6 +43,7 @@ def list_rate_types():
     
 # Rate routes
 @rates_bp.route("/rates", methods=["POST"])
+@jwt_required()
 def add_rate():
     data = request.get_json()
     errors = rate_schema.validate(data)
@@ -55,6 +58,7 @@ def add_rate():
 
 
 @rates_bp.route("/rates", methods=["GET"])
+@jwt_required()
 def list_rates():
     rates = get_all_rates()
     return jsonify(rate_schema_many.dump(rates)), 200

@@ -1,6 +1,10 @@
 from app.core.database import db
 from datetime import datetime
 
+StaffStatus = [
+    "ACTIVE",
+    "INACTIVE",
+]
 
 class  Staff(db.Model):
     __tablename__ = 'staff'
@@ -15,8 +19,10 @@ class  Staff(db.Model):
     address = db.Column(db.String(200), nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     
-    max_rides = db.Column(db.Integer, nullable=True)
-    max_amount = db.Column(db.Float, nullable=True)
+    rides_allocated = db.Column(db.Integer, nullable=True)
+    rides_used = db.Column(db.Integer, nullable=True)
+    max_fare_per_ride = db.Column(db.Float, nullable=True)
+    status = db.Column(db.Enum(*StaffStatus), default="ACTIVE",nullable=False,)
     
     created_at = db.Column(db.DateTime, default=datetime.now)
 

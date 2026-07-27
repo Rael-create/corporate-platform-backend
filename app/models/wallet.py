@@ -5,7 +5,7 @@ import enum
 
 WALLET_TYPES = [
     "CORPORATE_FUNDED",    # Company deposits their own money *CORPORATE PREPAID*
-    "PLATFORM_WALLET",  # Platform gives them credit *MASTER WALLET*,,PLATFORM MASTER
+    "PLATFORM_FUNDED",  # Platform gives them credit *MASTER WALLET*,,PLATFORM MASTER
     "PLATFORM_REVENUE"     # System wallet for platform earnings
 ]
 
@@ -13,10 +13,9 @@ class Wallet(db.Model):
     __tablename__ = 'wallet'
     
     wallet_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    
     corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=True)
     
-    wallet_type = db.Column(db.Enum(*WALLET_TYPES), nullable=False, default="PLATFORM_WALLET")
+    wallet_type = db.Column(db.Enum(*WALLET_TYPES), nullable=False, default="PLATFORM_FUNDED")
     currency = db.Column(db.String(3), default='KES', nullable=False)
     
     current_balance = db.Column(db.Float, default=0.0, nullable=False)
@@ -26,5 +25,5 @@ class Wallet(db.Model):
     
     
     def __repr__(self):
-        return f"<Wallet {self.wallet_id} - {self.wallet_type.value}>"
+        return f"<Wallet {self.wallet_id} - {self.wallet_type}>"
     

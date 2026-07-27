@@ -10,6 +10,8 @@ class RateTypeSchema(Schema):
             error=f"Rate type must be one of: {RATE_TYPES}"
         )
     )
+    created_by = fields.Int(required=True)
+
     
 
 class RateSchema(Schema):

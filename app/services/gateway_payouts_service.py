@@ -17,9 +17,8 @@ def create_payout(data):
         gateway_reference=data.get("gateway_reference"),
         failure_reason=data.get("failure_reason")
     )
-
     db.session.add(new_payout)
-    db.session.commit()
+    db.session.flush()
     return new_payout
 
 def get_all_payouts():

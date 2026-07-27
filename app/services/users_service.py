@@ -6,6 +6,7 @@ from app.core.database import db
 from app.models.staff import Staff
 from app.models.users import User
 from app.schemas.users_schema import NewUserSchema, UserSchema
+from app.models.ride_counter import RideCounter
 
 ALLOWED_ROLES = [
     "SUPER_ADMIN",
@@ -37,6 +38,8 @@ def create_user(data):
 
     try:
         # Create new user
+        # if currently logged in user is supe admin ,proceed default
+        # else use cop id of the user
         new_user = User(
             username=data['username'],
             role=data['role'],
@@ -54,8 +57,9 @@ def create_user(data):
             ).first()
             if existing_staff:
                 raise ValueError("Email already exists.")
+
                 
-    # AFTER creating user ,we need to create a staff profile for the user if the role is STAFF or CORPORATE_ADMIN
+            # AFTER creating user ,we need to create a staff profile for the user if the role is STAFF or CORPORATE_ADMIN
             new_staff = Staff(
                 first_name=data['first_name'],
                 last_name=data['last_name'],
@@ -65,12 +69,16 @@ def create_user(data):
                 location=data['location'],
                 address=data['address'],
                 phone_number=data['phone_number'],
-                
+
+                rides_allocated = data['rides_allocated'],
+                rides_used = data['rides_used'],
+                max_fare_per_ride = data['max_fare_per_ride'],
+                status = data['status'],
+
+
                 user_id=new_user.user_id,
                 corporate_id=new_user.corporate_id,
                 
-                max_rides=data.get("max_rides"),
-                max_amount=data.get("max_amount")
             )
             db.session.add(new_staff)    
         db.session.commit()
@@ -87,7 +95,7 @@ def create_user(data):
         traceback.print_exc()
         db.session.rollback()
         raise ValueError(
-            "Failed to create user."
+            f"Failed to create user. {e}"
         ) from e
     
     
