@@ -9,6 +9,7 @@ from app.api.v1.endpoints.ledger_entry_route import ledger_bp
 from app.api.v1.endpoints.gateway_payouts_route import gateway_payout_bp
 from app.api.v1.endpoints.staff_route import staff_bp
 from app.api.v1.endpoints.auth_route import auth_bp
+from app.api.v1.endpoints.finance_route import finance_bp
 
 def register_blueprints(app):
     app.register_blueprint(corporate_bp)
@@ -20,4 +21,5 @@ def register_blueprints(app):
     app.register_blueprint(gateway_payout_bp)
     app.register_blueprint(staff_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(finance_bp)
     
