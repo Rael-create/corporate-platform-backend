@@ -1,5 +1,6 @@
 from sqlalchemy import func
 from app.core.database import db
+from app.models.finance import PlatformRevenue, Invoice
 from app.models.ride_request import RideRequest, RideStatus
 from app.models.staff import Staff
 from app.models.rates import Rate, RateType
@@ -40,6 +41,38 @@ def create_ride(data):
     # payment gateway
     dispatch_to_gateway(ride=new_ride, payout=new_payout, db=db,simulate_failure=False)
 
+    # create arecord in revenue table if successfull ride from croporate walet
+
+    #  Record the Commission your platform earned
+    if new_ride.commission_amount > 0:
+        commission_revenue = PlatformRevenue(
+            corporate_id=staff.corporate_id,
+            staff_id=staff.staff_id,
+            ride_id=new_ride.ride_id,
+            amount=new_ride.commission_amount,
+            revenue_type="COMMISSION",
+            status="CONFIRMED"
+        )
+        db.session.add(commission_revenue)
+
+    #  Record the VAT your platform collected
+    if new_ride.vat_amount > 0:
+        vat_revenue = PlatformRevenue(
+            corporate_id=staff.corporate_id,
+            staff_id=staff.staff_id,
+            ride_id=new_ride.ride_id,
+            amount=new_ride.vat_amount,
+            revenue_type="VAT",
+            status="CONFIRMED"
+        )
+        db.session.add(vat_revenue)
+
+
+
+    # update platform revenue wallet using the new balance -check if its there
+
+
+    # Update rides used
     auth_ride.update_rides_used()
 
     # push info to ledger

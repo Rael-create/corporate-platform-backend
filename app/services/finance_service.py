@@ -50,6 +50,8 @@ def record_payment(data):
 
     )
 
+    # create platfprm revenue record 
+
     #update the invoice status
     invoice.status = "PAID"
 
