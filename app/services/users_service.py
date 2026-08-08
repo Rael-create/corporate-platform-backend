@@ -98,4 +98,18 @@ def create_user(data):
             f"Failed to create user. {e}"
         ) from e
     
+
+
+
+def get_user_by_id(user_id):
+    """
+    Get a user by their ID from the database.
+    """
+    from app.models import User  # Import your User model
     
+    try:
+        user = User.query.get(user_id)
+        return user
+    except Exception as e:
+        print(f"Error fetching user {user_id}: {str(e)}")
+        return None

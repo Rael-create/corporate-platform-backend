@@ -1,8 +1,12 @@
+# pyrefly: ignore [missing-import]
 from flask_jwt_extended import JWTManager
 
+# pyrefly: ignore [missing-import]
 from flask import Flask
 from flask_migrate import Migrate
+# pyrefly: ignore [missing-import]
 from flasgger import Swagger
+from flask_cors import CORS
 
 from app.core.database import db
 from app.core.config import Config
@@ -13,11 +17,12 @@ migrate = Migrate()
 def create_app():
     app = Flask(__name__)
 
+    CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"]) 
 
     # Load configuration
     app.config.from_object(Config)
 
-    app.config["JWT_SECRET_KEY"] = "super-secret-key-change-later" 
+    app.config["JWT_SECRET_KEY"] = "super-secret-key-change-later-1234567890" 
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600 # Token lasts 1 hour
     JWTManager(app)
 
@@ -55,5 +60,6 @@ def create_app():
     from app.models.ride_counter import RideCounter
     from app.models.finance import PlatformRevenue, Payment, Invoice
 
-
+    
+    
     return app

@@ -60,23 +60,25 @@ def login():
 def get_otp():
     """Staff requests an OTP to their phone number."""
     data = request.get_json()
-    phone_number = data.get("phone_number")
+    phone_number = data["phone_number"]
 
     if not phone_number:
         return jsonify({"message": "Phone number is required"}), 400
+
+    phone_number = "0" + str(data["phone_number"])[-9:]
 
     try:
         result = request_staff_otp(phone_number)
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({"message": str(e)}), 404
+        return jsonify({"message": str(e)}), 400
 
-@auth_bp.route("login-otp", methods=["POST"])
+@auth_bp.route("/login-otp", methods=["POST"])
 def login_with_otp():
     """Staff logs in using the OTP they received."""
 
     data = request.get_json()
-    phone_number = data.get("phone_number")
+    phone_number = "0" + str(data["phone_number"])[-9:]
     otp_code = data.get("otp_code")
 
     if not phone_number or not otp_code:
