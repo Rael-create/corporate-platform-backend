@@ -93,7 +93,12 @@ class TripAuthorizationEngine:
         cost_bdown = self.calculate_cost_breakdown()
 
         # GATE 4: Corporate Credit Limit Check
-        wallet = Wallet.query.filter_by(corporate_id=org.corporate_id).first()
+        # CHeck if they use corporate wallet
+        if org.wallet_type == "CORPORATE_FUNDED":
+            wallet = Wallet.query.filter_by(corporate_id=org.corporate_id).first()
+
+        wallet = Wallet.query.filter_by(wallet_type="PLATFORM_FUNDED").first()
+
         available_credit = wallet.current_balance
         if cost_bdown["total_fare"] > available_credit:
             return (
@@ -146,27 +151,16 @@ class TripAuthorizationEngine:
         # ALL GATES PASSED: Safe to proceed to gateway execution
         return True, "AUTHORIZED: Proceeding to Gateway Payout", new_ride, new_payout
 
-    # def process_webhook_callback(self, ride_id, getway_reference: str, status: bool):
-
-    #     ride = RideRequest.query.get(ride_id).with_for_update().first()
-    #     payout_details = GatewayPayout.query.filter_by(ride_id = ride_id).with_for_update().first()
-    #     if not ride:
-    #         return False, "Ride record not found"
-
-    #     if status == "COMPLETED":
-    #         # 1. update statuses
-    #         ride.status = "COMPLETED"
-    #         payout_details.status = "SUCCESS"
-    #         # 2. increment rides
-    #         self.update_rides_used()
-    #         self.db_session.session.commit()
-
     def update_rides_used(self, action="add"):
+        rides_used = self.staff.rides_used
+        if not rides_used:
+            rides_used = 0
 
         if action == "add":
-            self.staff.rides_used += 1
+            rides_used += 1
         else:
-            self.staff.rides_used -= 1
+            if rides_used > 0:
+                rides_used -= 1
 
         self.db_session.session.flush()
 
