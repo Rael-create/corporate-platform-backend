@@ -22,6 +22,19 @@ def create_corporate(data):
         db.session.rollback()
         raise e
 
+def get_all_corporates():
+    """Get all corporates."""
+    return Corporate.query.all()
+
+
+def get_corporate(corporate_id):
+    """Get a single corporate by ID."""
+    corporate = Corporate.query.get(corporate_id)
+    if not corporate:
+        raise ValueError("Corporate not found")
+    return corporate
+
+
 def delete_corporate(corporate_id):
     corporate = Corporate.query.get(corporate_id)
 

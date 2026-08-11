@@ -31,7 +31,7 @@ class  Staff(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False, unique=True)
 
     # Link Connects the Staff member to their Corporate entity
-    corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=False)
+    corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=True)
 
     user = db.relationship("User", backref="staff", uselist=False)
 

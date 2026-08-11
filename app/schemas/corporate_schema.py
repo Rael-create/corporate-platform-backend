@@ -8,6 +8,7 @@ WALLET_TYPES = [
 ]
  
 class CorporateSchema(Schema):
+    """Schema for returning corporate data."""
     corporate_id = fields.Int(dump_only =True)
     corporate_name = fields.Str(required=True)
     location = fields.Str(required=True)
@@ -32,3 +33,22 @@ class CorporateSchema(Schema):
     )
 
     created_at = fields.DateTime(dump_only=True)
+
+class CorporateCreateSchema(Schema):
+    """Schema for creating a new corporate."""
+    corporate_name = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    location = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    address = fields.Str(required=True, validate=validate.Length(min=1, max=200))
+    contacts = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    wallet_type = fields.Str(required=True, validate=validate.OneOf(WALLET_TYPES))
+    status = fields.Str(validate=validate.OneOf(CorporateStatus), load_default="ACTIVE")
+
+
+class CorporateUpdateSchema(Schema):
+    """Schema for updating a corporate."""
+    corporate_name = fields.Str(validate=validate.Length(min=1, max=100))
+    location = fields.Str(validate=validate.Length(min=1, max=100))
+    address = fields.Str(validate=validate.Length(min=1, max=200))
+    contacts = fields.Str(validate=validate.Length(min=1, max=100))
+    wallet_type = fields.Str(validate=validate.OneOf(WALLET_TYPES))
+    status = fields.Str(validate=validate.OneOf(CorporateStatus))

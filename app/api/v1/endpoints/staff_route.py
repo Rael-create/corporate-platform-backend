@@ -230,11 +230,11 @@ def get_staff_by_corporate_endpoint(corporate_id):
     except Exception as e:
         return jsonify({"message": "Failed to fetch staff", "error": str(e)}), 500
 
+
 # 6. CREATE STAFF FROM USER
 @staff_bp.route("/create", methods=["POST"])
 @jwt_required()
 def create_staff_endpoint():
-
     try:
         data = request.get_json()
         
@@ -257,8 +257,26 @@ def create_staff_endpoint():
         if current_user.role not in ["SUPER_ADMIN", "CORPORATE_ADMIN"]:
             return jsonify({"message": "Unauthorized. Admin access required."}), 403
         
+        # ✅ Get user_id from data
+        user_id = data.get('user_id')
+        if not user_id:
+            return jsonify({"message": "user_id is required"}), 400
+        
+        # ✅ If user is SUPER_ADMIN, corporate_id can be None
+        # Get the user to check their role
+        target_user = User.query.get(user_id)
+        if not target_user:
+            return jsonify({"message": "Target user not found"}), 404
+        
+        # ✅ If target user is SUPER_ADMIN, corporate_id is optional
+        if target_user.role == 'SUPER_ADMIN':
+            # corporate_id can be None or omitted
+            pass
+        elif not data.get('corporate_id'):
+            return jsonify({"message": "corporate_id is required for STAFF and CORPORATE_ADMIN roles"}), 400
+        
         # Create staff
-        new_staff = create_staff_from_user(data['user_id'], data)
+        new_staff = create_staff_from_user(user_id, data)
         
         return jsonify({
             "message": "Staff created successfully",

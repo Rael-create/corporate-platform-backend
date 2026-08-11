@@ -92,7 +92,14 @@ def create_staff_from_user(user_id, staff_data):
     existing_staff_email = Staff.query.filter_by(email=staff_data.get('email')).first()
     if existing_staff_email:
         raise ValueError("Email already exists")
-    
+
+    # corporate_id can be None (especially for SUPER_ADMIN)
+    corporate_id = staff_data.get('corporate_id')
+    if user.role == 'SUPER_ADMIN':
+        pass
+    elif not corporate_id:
+        raise ValueError("corporate_id is required for STAFF and CORPORATE_ADMIN roles")
+
     # Create staff profile
     new_staff = Staff(
         first_name=staff_data['first_name'],
@@ -108,7 +115,7 @@ def create_staff_from_user(user_id, staff_data):
         max_fare_per_ride=staff_data.get('max_fare_per_ride'),
         status=staff_data.get('status', 'ACTIVE'),
         user_id=user_id,
-        corporate_id=user.corporate_id,
+        corporate_id=corporate_id,
     )
     
     db.session.add(new_staff)
