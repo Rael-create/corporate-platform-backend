@@ -80,6 +80,54 @@ def create_wallet(data):
         raise ValueError(f"Unsupported wallet_type: {data['wallet_type']}")
 
 
+def transfer_from_platform_to_corporate(corporate_wallet_id, amount, admin_user_id):
+    # Get the platform wallet (corporate_id IS NULL)
+    platform_wallet = Wallet.query.filter_by(corporate_id=None, wallet_type='PLATFORM_FUNDED').first()
+    if not platform_wallet:
+        raise ValueError("Platform master wallet not found")
+
+    # Get the corporate wallet
+    corporate_wallet = Wallet.query.get(corporate_wallet_id)
+    if not corporate_wallet:
+        raise ValueError("Corporate wallet not found")
+    if corporate_wallet.wallet_type != 'PLATFORM_FUNDED':
+        raise ValueError("Corporate wallet must be PLATFORM_FUNDED to receive platform funds")
+
+    # Check sufficient balance
+    if platform_wallet.current_balance < amount:
+        raise ValueError("Insufficient platform balance")
+
+    # Perform transfer
+    platform_wallet.current_balance -= amount
+    corporate_wallet.current_balance += amount
+
+    # Record ledger entries
+    # Debit from platform
+    ledger_entry_platform = LedgerEntry(
+        corporate_id=None,  # Platform has no corporate
+        wallet_id=platform_wallet.wallet_id,
+        transaction_type="CORPORATE_TOPUP",
+        transaction_class="Debit",
+        amount=amount
+    )
+    # Credit to corporate
+    ledger_entry_corporate = LedgerEntry(
+        corporate_id=corporate_wallet.corporate_id,
+        wallet_id=corporate_wallet.wallet_id,
+        transaction_type="CORPORATE_TOPUP",
+        transaction_class="Credit",
+        amount=amount
+    )
+
+    db.session.add(ledger_entry_platform)
+    db.session.add(ledger_entry_corporate)
+    db.session.commit()
+
+    return {
+        "platform_wallet": platform_wallet,
+        "corporate_wallet": corporate_wallet,
+        "amount": amount
+    }
 
 def get_all_wallets():
     return Wallet.query.all()
@@ -90,5 +138,20 @@ def get_wallet(wallet_id):
         raise ValueError("Wallet not found")
     return wallet
 
-
-
+# DELETE Wallet Service
+def delete_wallet(wallet_id):
+    wallet = Wallet.query.get(wallet_id)
+    
+    if not wallet:
+        raise ValueError("Wallet not found")
+    
+    # Check if wallet has any associated ledger entries
+    ledger_entries = LedgerEntry.query.filter_by(wallet_id=wallet_id).first()
+    
+    if ledger_entries:
+        raise ValueError("Cannot delete wallet with existing ledger entries. Please archive instead.")
+    
+    db.session.delete(wallet)
+    db.session.commit()
+    
+    return {"message": f"Wallet {wallet_id} deleted successfully"}

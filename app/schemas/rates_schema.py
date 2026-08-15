@@ -12,6 +12,14 @@ class RateTypeSchema(Schema):
     )
     created_by = fields.Int(required=True)
 
+class RateTypeUpdateSchema(Schema):
+    name = fields.Str(
+        validate=validate.OneOf(
+            RATE_TYPES,
+            error=f"Rate type must be one of: {RATE_TYPES}"
+        )
+    )
+    created_by = fields.Int(required=True)
     
 
 class RateSchema(Schema):
@@ -20,5 +28,10 @@ class RateSchema(Schema):
     
     rate = fields.Float(required=True)
     rate_type_id = fields.Int(required=True)
+    created_by = fields.Int(required=True)
+
+class RateUpdateSchema(Schema):
+    rate = fields.Float()
+    rate_type_id = fields.Int()
     created_by = fields.Int(required=True)
     

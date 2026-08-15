@@ -29,7 +29,41 @@ def create_rate_type(data):
 def get_all_rate_types():
     return RateType.query.all()
 
+def get_rate_type(rate_type_id):
+    rate_type = RateType.query.get(rate_type_id)
+    if not rate_type:
+        raise ValueError("Rate type not found")
+    return rate_type
+
+def update_rate_type(rate_type_id, data):
+    check_is_super_admin(data['created_by'])
+    rate_type = get_rate_type(rate_type_id)
     
+    if 'name' in data:
+        rate_type.name = data['name'].upper()
+    
+    try:
+        db.session.commit()
+        return rate_type
+    except IntegrityError:
+        db.session.rollback()
+        raise ValueError("Rate type name already exists")
+
+
+def delete_rate_type(rate_type_id, user_id):
+    check_is_super_admin(user_id)
+    rate_type = get_rate_type(rate_type_id)
+    
+    # Check if rate type has associated rates
+    if rate_type.rates:
+        raise ValueError("Cannot delete rate type with existing rates. Delete rates first.")
+    
+    db.session.delete(rate_type)
+    db.session.commit()
+    return {"message": f"Rate type {rate_type_id} deleted successfully"}
+
+#RATE
+   
 def create_rate(data):
     
     check_is_super_admin(data['created_by'])
@@ -50,4 +84,36 @@ def create_rate(data):
     
 
 def get_all_rates():
-    return Rate.query.all()      
+    return Rate.query.all()   
+
+def get_rate(rate_id):
+    rate = Rate.query.get(rate_id)
+    if not rate:
+        raise ValueError("Rate not found")
+    return rate
+
+
+def update_rate(rate_id, data):
+    check_is_super_admin(data['created_by'])
+    rate = get_rate(rate_id)
+    
+    if 'rate' in data:
+        rate.rate = data['rate']
+    if 'rate_type_id' in data:
+        rate.rate_type_id = data['rate_type_id']
+    
+    try:
+        db.session.commit()
+        return rate
+    except IntegrityError:
+        db.session.rollback()
+        raise ValueError("Failed to update rate. Check if rate_type_id exists.")
+
+
+def delete_rate(rate_id, user_id):
+    check_is_super_admin(user_id)
+    rate = get_rate(rate_id)
+    
+    db.session.delete(rate)
+    db.session.commit()
+    return {"message": f"Rate {rate_id} deleted successfully"}   

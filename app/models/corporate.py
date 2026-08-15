@@ -31,7 +31,7 @@ class Corporate(db.Model):
 
     #Relationship: Allows us to easily find all staff belonging to the corporate entity
     staff_members = db.relationship('Staff', backref='corporate', lazy=True, cascade="all, delete-orphan")
-    #ride_requests = db.relationship('RideRequest', backref='corporate', lazy=True, cascade="all, delete-orphan")
+    wallets = db.relationship('Wallet', backref='corporate', lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Corporate {self.corporate_name}>"
