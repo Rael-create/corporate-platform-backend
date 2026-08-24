@@ -4,39 +4,36 @@ from app.models.wallet import Wallet
 from sqlalchemy.exc import IntegrityError
 from app.models.corporate import Corporate
 
+
 def create_ledger_entry(data):
     # get walet type from corporates table linked by corporate id
     corporate = Corporate.query.get(data["corporate_id"])
     if not corporate:
         raise ValueError("Corporate not found in the database!")
-
-    wallet_type = corporate.wallet_type
-
-    if wallet_type in ["PLATFORM_FUNDED","PLATFORM_REVENUE"]:
-        # wallet = Wallet.query.get(data["wallet_id"])
-        wallet = Wallet.query.filter(
-            Wallet.wallet_type == wallet_type
-            ).first()
-    else:
-        wallet = Wallet.query.filter(
-            Wallet.corporate_id == data["corporate_id"]
-        ).first()
-    
+    wallet = Wallet.query.filter(Wallet.corporate_id == data["corporate_id"]).first()
+    # if type == "INVOICE_PAYMENT":
+    #     wallet = Wallet.query.filter(
+    #         # corprate idid null
+    #         # wallet type = PLATFOMR_FUNDED
+    #     ).first()
 
     new_entry = LedgerEntry(
         wallet_id=wallet.wallet_id,
-        corporate_id = corporate.corporate_id,
+        corporate_id=corporate.corporate_id,
         ride_id=data.get("ride_id"),
         transaction_type=data["transaction_type"],
         transaction_class=data["transaction_class"],
-        amount= data["amount"] if data["transaction_class"] == "Credit" else data["amount"] * -1.0
-        ,
+        amount=(
+            data["amount"]
+            if data["transaction_class"] == "Credit"
+            else data["amount"] * -1.0
+        ),
     )
 
     if data["transaction_class"] == "Credit":
         wallet.current_balance += data["amount"]
     elif data["transaction_class"] == "Debit":
-        wallet.current_balance -= data["amount"] 
+        wallet.current_balance -= data["amount"]
 
     try:
         db.session.add(new_entry)

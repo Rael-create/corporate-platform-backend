@@ -2,6 +2,7 @@ from app.core.database import db
 from app.models.gateway_payouts import GatewayPayout
 from app.models.ride_request import RideRequest
 
+
 def create_payout(data):
     # 1. Verify the ride exists
     ride = RideRequest.query.get(data["ride_id"])
@@ -12,17 +13,20 @@ def create_payout(data):
     new_payout = GatewayPayout(
         ride_id=ride.ride_id,
         target_identifier=data["target_identifier"],
+        payment_method=data["payment_method"],
         amount_sent=float(data["amount_sent"]),
         status=data.get("status", "PENDING"),
         gateway_reference=data.get("gateway_reference"),
-        failure_reason=data.get("failure_reason")
+        failure_reason=data.get("failure_reason"),
     )
     db.session.add(new_payout)
     db.session.flush()
     return new_payout
 
+
 def get_all_payouts():
     return GatewayPayout.query.order_by(GatewayPayout.created_at.desc()).all()
+
 
 def get_payout(payout_id):
     payout = GatewayPayout.query.get(payout_id)
@@ -30,11 +34,12 @@ def get_payout(payout_id):
         raise ValueError("Payout not found")
     return payout
 
+
 def update_payout(payout_id, data):
     payout = GatewayPayout.query.get(payout_id)
     if not payout:
         raise ValueError("Payout not found")
-        
+
     # Update fields only if they are provided in the request
     if "status" in data:
         payout.status = data["status"]
@@ -44,9 +49,10 @@ def update_payout(payout_id, data):
         payout.failure_reason = data["failure_reason"]
     if "amount_sent" in data:
         payout.amount_sent = float(data["amount_sent"])
-        
+
     db.session.commit()
     return payout
+
 
 def delete_payout(payout_id):
     payout = GatewayPayout.query.get(payout_id)

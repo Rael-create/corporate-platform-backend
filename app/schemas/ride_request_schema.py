@@ -1,4 +1,5 @@
 from marshmallow import Schema, fields, validate
+from app.models.gateway_payouts import PaymentMethod
 from app.models.ride_request import RideStatus 
 
 
@@ -8,6 +9,7 @@ class CreateRideRequestSchema(Schema):
     pickup_location = fields.Str(required=True)
     destination = fields.Str(required=True)
     base_fare = fields.Float(required=True)
+    payment_method = fields.Str(required=True, validate=validate.OneOf(PaymentMethod))
     matatu_identifier = fields.Str(required=True)
     reason = fields.Str(allow_none=True)
 

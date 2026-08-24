@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Invoice {{ invoice.invoice_number }}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica', Arial, sans-serif;
+    font-size: 11px;
+    padding: 20px;
+    color: #1a1a2e;
+  }
+  .invoice-wrapper { max-width: 1000px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 36px; height: 36px; background: #3b82f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: bold; font-size: 16px; }
+  .brand-text h1 { font-size: 18px; }
+  .brand-text p { font-size: 10px; color: #64748b; }
+  .meta { text-align: right; }
+  .status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-weight: 600; font-size: 10px; }
+  .status-paid { background: #e6f4ea; color: #1e7e34; }
+  .status-unpaid { background: #fee2e2; color: #b91c1c; }
+  .status-overdue { background: #fef3c7; color: #b45309; }
+  .meta h2 { font-size: 20px; margin: 2px 0; }
+  .meta p { font-size: 10px; color: #64748b; }
+  .info-grid { display: flex; justify-content: space-between; margin-bottom: 12px; }
+  .info-grid .label { font-size: 9px; font-weight: 600; text-transform: uppercase; color: #64748b; }
+  .info-grid .value { font-size: 11px; margin-top: 2px; }
+
+  /* Summary table – clean, no ride details */
+  .summary-table { width: 100%; max-width: 400px; margin-left: auto; border-collapse: collapse; font-size: 11px; }
+  .summary-table td { padding: 4px 0; }
+  .summary-table .right { text-align: right; }
+  .summary-table .label { font-weight: 400; }
+  .summary-table .total-row { font-weight: 600; }
+  .summary-table .grand-total { font-size: 16px; color: #3b82f6; border-top: 2px solid #1a1a2e; padding-top: 8px; }
+
+  .footer { margin-top: 12px; border-top: 1px solid #ccc; padding-top: 8px; font-size: 9px; color: #475569; }
+  .footer strong { color: #1a1a2e; }
+</style>
+</head>
+<body>
+<div class="invoice-wrapper">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="logo">CR</div>
+      <div class="brand-text">
+        <h1>Corporate Rides</h1>
+        <p>Your trusted ride partner</p>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="status 
+        {%- if invoice.status == 'PAID' -%}status-paid
+        {%- elif invoice.status == 'OVERDUE' -%}status-overdue
+        {%- else -%}status-unpaid{%- endif -%}
+      ">
+        {{ invoice.status }}
+      </span>
+      <h2>{{ invoice.invoice_number }}</h2>
+      <p>Issued: {{ invoice.created_at.strftime('%d %b %Y') }}</p>
+      <p>Due: {{ invoice.due_date.strftime('%d %b %Y') }}</p>
+    </div>
+  </div>
+
+  <!-- Billing & Payment -->
+  <div class="info-grid">
+    <div>
+      <p class="label">Invoiced To</p>
+      <p class="value"><strong>{{ corporate_name }}</strong></p>
+      {% if corporate_address %}
+      <p class="value">{{ corporate_address }}</p>
+      {% endif %}
+    </div>
+    <div style="text-align: right;">
+      <p class="label">Payment Details</p>
+      <div class="value">
+        <p><strong>M-Pesa:</strong> Paybill {{ settings.mpesa_paybill }}, Account {{ settings.mpesa_account_prefix }}{{ invoice.invoice_number }}</p>
+        <p><strong>Bank:</strong> {{ settings.bank_name }}, Acc {{ settings.bank_account_number }}, {{ settings.bank_account_name }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Table (no ride-by-ride list) -->
+  <h3 style="font-size:10px; font-weight:600; text-transform:uppercase; color:#64748b; margin-bottom:4px;">Invoice Summary</h3>
+
+  <table class="summary-table">
+    <tr>
+      <td class="label">Base Fare</td>
+      <td class="right">{{ "%.2f"|format(subtotal) }}</td>
+    </tr>
+    <tr>
+      <td class="label">Commission</td>
+      <td class="right">{{ "%.2f"|format(total_commission) }}</td>
+    </tr>
+    <tr>
+      <td class="label">VAT</td>
+      <td class="right">{{ "%.2f"|format(total_vat) }}</td>
+    </tr>
+
+    <tr>
+      <td class="label"><strong>Subtotal</strong></td>
+      <td class="right"><strong>{{ "%.2f"|format(subtotal + total_commission) }}</strong></td>
+    </tr>
+    <tr class="grand-total">
+      <td><strong>Grand Total</strong></td>
+      <td class="right"><strong>{{ currency }} {{ "%.2f"|format(invoice.total_amount) }}</strong></td>
+    </tr>
+  </table>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>
+      <strong>Payment instructions:</strong> Please use the invoice number as the reference.
+      For M‑Pesa, use Paybill <strong>{{ settings.mpesa_paybill }}</strong> and account <strong>{{ settings.mpesa_account_prefix }}{{ invoice.invoice_number }}</strong>.
+    </p>
+    <p style="margin-top:4px;">
+      KRA PIN: <strong>{{ settings.kra_pin }}</strong> &nbsp;·&nbsp; NB: Add your KRA PIN to receive eTIMS receipt.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -6,6 +6,7 @@ from app.models.rates import Rate, RateType
 from app.models.ride_request import RideRequest
 from app.models.wallet import Wallet
 from app.services.gateway_payouts_service import create_payout
+from app.services.ledger_entry_service import create_ledger_entry
 
 
 class TripAuthorizationEngine:
@@ -94,10 +95,10 @@ class TripAuthorizationEngine:
 
         # GATE 4: Corporate Credit Limit Check
         # CHeck if they use corporate wallet
-        if org.wallet_type == "CORPORATE_FUNDED":
-            wallet = Wallet.query.filter_by(corporate_id=org.corporate_id).first()
+        # if org.wallet_type == "CORPORATE_FUNDED":
+        wallet = Wallet.query.filter_by(corporate_id=org.corporate_id).first()
 
-        wallet = Wallet.query.filter_by(wallet_type="PLATFORM_FUNDED").first()
+        # wallet = Wallet.query.filter_by(wallet_type="PLATFORM_FUNDED").first()
 
         available_credit = wallet.current_balance
         if cost_bdown["total_fare"] > available_credit:
@@ -137,10 +138,22 @@ class TripAuthorizationEngine:
         self.db_session.session.add(new_ride)
         self.db_session.session.flush()
 
+        # deduct the same amount from the walet provsionaly
+        create_ledger_entry(
+            data={
+                "corporate_id": staff.corporate_id,
+                "ride_id": new_ride.ride_id,
+                "transaction_type": "TRIP_DEDUCTION",
+                "transaction_class": "Debit",
+                "amount": new_ride.total_fare,
+            }
+        )
+
         new_payout = create_payout(
             data={
                 "ride_id": new_ride.ride_id,
                 "target_identifier": new_ride.matatu_identifier,
+                "payment_method": data["payment_method"],
                 "amount_sent": new_ride.base_fare,
                 "status": "PENDING",
                 "gateway_reference": None,
@@ -162,6 +175,7 @@ class TripAuthorizationEngine:
             if rides_used > 0:
                 rides_used -= 1
 
-        self.db_session.session.flush()
+        self.db_session.session.add(self.staff)
+        self.db_session.session.commit()
 
-        return self.staff.rides_used, "New Ride updated successfully"
+        return self.staff.rides_used, "New Counter updated"

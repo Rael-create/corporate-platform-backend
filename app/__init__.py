@@ -63,7 +63,8 @@ def create_app():
     from app.models.rates import RateType, Rate
     from app.models.wallet import Wallet
     from app.models.ride_counter import RideCounter
-    from app.models.finance import PlatformRevenue, Payment, Invoice
+    from app.models.finance import PlatformRevenue, Invoice
+    from app.models.platform_settings import PlatformSettings
 
     
     

@@ -10,7 +10,7 @@ TRANSACTION_CLASSES = [
 
 TRANSACTION_TYPES = [
     "TRIP_DEDUCTION",
-    "PLATFORM_TOPUP", # specifies topup made by platform admin for use in the central wallet/
+    "PLATFORM_TOPUP", 
     "CORPORATE_TOPUP",
     "INVOICE_PAYMENT",
     "TRIP_REVERSAL",

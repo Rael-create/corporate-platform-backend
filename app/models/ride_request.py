@@ -24,7 +24,7 @@ class RideRequest(db.Model):
     reason = db.Column(db.Text, nullable=True)              
     
     # Matatu details
-    matatu_identifier = db.Column(db.String(100), nullable=True) # Input target (Till Number, Paybill/Account, POCHI
+    matatu_identifier = db.Column(db.String(100), nullable=False) # Input target (Till Number, Paybill/Account, POCHI
     
     #Financial fields
     base_fare = db.Column(db.Float, nullable=True)

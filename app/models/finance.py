@@ -4,18 +4,18 @@ from datetime import datetime, timedelta
 InvoiceStatus = [
     "UNPAID",
     "PAID",
+    "PENDING",
     "OVERDUE"
 ]
 
 RevenueType = [
     "COMMISSION",
-    "VAT",
-    "PLATFORM_FEE"
-]
+    "VAT"
+    ]
 
 RevenueStatus = [
-    "PENDING",
-    "CONFIRMED"
+    "PENDING", 
+    "CONFIRMED" #-- paid 
 ]
 
 class Invoice(db.Model):
@@ -25,39 +25,47 @@ class Invoice(db.Model):
     invoice_number = db.Column(db.String(50), unique=True, nullable=False)
     corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=False)
     total_amount = db.Column(db.Float, nullable=False)
+    base_fare = db.Column(db.Float, nullable=False)
+    commision = db.Column(db.Float, nullable=False)
+    vat = db.Column(db.Float, nullable=False)
     status = db.Column(db.Enum(*InvoiceStatus), default="UNPAID", nullable=False)
+
+    payment_method = db.Column(db.String(50), nullable=True)  
+    account_number = db.Column(db.String(100), nullable=True)  
+    Bank_name = db.Column(db.String(100), nullable=True)
+    Paybill_number = db.Column(db.String(100), nullable=True)
+    transaction_reference = db.Column(db.String(100), unique=True, nullable=True) 
+
+    paid_at = db.Column(db.DateTime, default=datetime.now)
     due_date = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
 
     # Relationships
     corporate = db.relationship("Corporate", backref="invoices")
-    payments = db.relationship("Payment", backref="invoice", lazy=True)
+    line_items = db.relationship("InvoiceLineItem", backref="invoice", lazy=True, cascade="all, delete-orphan")
     revenues = db.relationship("PlatformRevenue", backref="invoice", lazy=True)
 
     def __repr__(self):
         return f"<Invoice {self.invoice_number} - {self.status}>"
 
+class InvoiceLineItem(db.Model):
+    __tablename__ = "invoice_line_items"
 
-class Payment(db.Model):
-    __tablename__ = "payment" 
+    line_item_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoice.invoice_id'), nullable=False)
+    ride_id = db.Column(db.Integer, db.ForeignKey('ride_requests.ride_id'), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    base_fare = db.Column(db.Float, nullable=False)
+    vat_amount = db.Column(db.Float, nullable=False)
+    commission_amount = db.Column(db.Float, nullable=False)
+    total = db.Column(db.Float, nullable=False)
 
-    payment_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=False)
-    wallet_id = db.Column(db.Integer, db.ForeignKey('wallet.wallet_id'), nullable=True) 
-    invoice_id = db.Column(db.Integer, db.ForeignKey('invoice.invoice_id'), nullable=False) 
-    
-    amount_paid = db.Column(db.Float, nullable=False)
-
-    payment_method = db.Column(db.String(50), nullable=False)  
-    account_number = db.Column(db.String(100), nullable=True)  
-    transaction_reference = db.Column(db.String(100), unique=True, nullable=False) 
-    paid_at = db.Column(db.DateTime, default=datetime.now)
-
-    corporate = db.relationship("Corporate", backref="payments")
-    wallet = db.relationship("Wallet", backref="payments")  
+    ride = db.relationship("RideRequest", backref="invoice_line_items")
 
     def __repr__(self):
-        return f"<Payment {self.transaction_reference} - {self.amount_paid}>"
+        return f"<InvoiceLineItem {self.line_item_id} - ride {self.ride_id}>"
 
 
 class PlatformRevenue(db.Model):

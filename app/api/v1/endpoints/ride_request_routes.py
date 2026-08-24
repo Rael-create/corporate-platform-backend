@@ -1,69 +1,107 @@
 # app/api/v1/endpoints/ride_routes.py
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, redirect, request, jsonify,url_for
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.core.database import db
+from app.models.gateway_payouts import GatewayPayout
+from app.models.ride_request import RideRequest
+from app.models.staff import Staff
 from app.services.ride_request_service import (
-    create_ride,
+    create_ride_only,
     get_all_rides,
     get_ride,
     delete_ride,
+    process_ride_after_authorization,
 )
 from app.schemas.ride_request_schema import (
     CreateRideRequestSchema,
     UpdateRideRequestSchema,
-    RideRequestResponseSchema
+    RideRequestResponseSchema,
 )
 
 ride_request_bp = Blueprint("ride_requests", __name__, url_prefix="/api/v1/rides")
 
-create_schema = CreateRideRequestSchema()
+create_ride_schema = CreateRideRequestSchema()
 response_schema = RideRequestResponseSchema()
 update_schema = UpdateRideRequestSchema()
 response_schema_many = RideRequestResponseSchema(many=True)
+
 
 @ride_request_bp.route("/create", methods=["POST"])
 @jwt_required()
 def add_ride():
     data = request.get_json()
-    
-    # ✅ Add debug logging
-    print(f"📥 Received ride request data: {data}")
-    
-    # ✅ Validate input
-    errors = create_schema.validate(data)
+    errors = create_ride_schema.validate(data)
     if errors:
-        print(f"❌ Validation errors: {errors}")
         return jsonify({"errors": errors}), 400
-    
+
     try:
-        # ✅ Get current user ID from JWT
         current_user_id = get_jwt_identity()
-        print(f"👤 Current user ID: {current_user_id}")
-        
-        # ✅ Add staff_id to data if not provided
-        if 'staff_id' not in data:
-            # Get staff_id from user
-            from app.models.staff import Staff
+        # ensure staff_id is present (if missing, add it)
+        if "staff_id" not in data:
             staff = Staff.query.filter_by(user_id=current_user_id).first()
             if not staff:
-                return jsonify({"message": "Staff profile not found for this user"}), 400
-            data['staff_id'] = staff.staff_id
-            print(f"👤 Added staff_id: {staff.staff_id}")
+                return jsonify({"message": "Staff profile not found"}), 400
+            data["staff_id"] = staff.staff_id
+
+        # ✅ Create ONLY the ride and payout
+        new_ride, new_payout = create_ride_only(data)
+        db.session.commit()
+
         
-        # ✅ Call create_ride - it returns a dictionary
-        result = create_ride(data)
-        print(f"✅ Ride created successfully: {result}")
-        
-        # ✅ Return the result directly (it's already a dict)
-        return jsonify(result), 201
-        
+
+        # ✅ Redirect to processing endpoint
+        return redirect(
+            url_for('ride_requests.process_ride', ride_id=new_ride.ride_id),
+            code=307
+        )
+
     except ValueError as e:
-        print(f"❌ ValueError: {str(e)}")
         return jsonify({"message": str(e)}), 400
     except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        db.session.rollback()
         return jsonify({"message": "Failed to create ride", "error": str(e)}), 500
+
+@ride_request_bp.route("/<int:ride_id>/process", methods=["GET", "POST"])
+@jwt_required()
+def process_ride(ride_id):
+
+    try:
+        current_user_id = get_jwt_identity()
+
+        # Fetch ride
+        ride = RideRequest.query.get(ride_id)
+        if not ride:
+            return jsonify({"message": "Ride not found"}), 404
+
+        # Security: ensure the ride belongs to the current user's staff
+        staff = Staff.query.filter_by(user_id=current_user_id).first()
+        if not staff or ride.staff_id != staff.staff_id:
+            return jsonify({"message": "Unauthorized"}), 403
+
+        # Fetch the associated payout
+        payout = GatewayPayout.query.filter_by(ride_id=ride_id).first()
+        if not payout:
+            return jsonify({"message": "Payout not found"}), 404
+
+        # Re‑create a minimal auth_ride engine
+        from app.services.auth_service import TripAuthorizationEngine
+        auth_ride = TripAuthorizationEngine(staff, ride.base_fare, db_session=db, data={})
+
+        # Call the processing function
+        result = process_ride_after_authorization(
+            staff=staff,
+            new_ride=ride,
+            new_payout=payout,
+            auth_message="Ride processed successfully",
+            auth_ride=auth_ride
+        )
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error processing ride: {str(e)}")
+        return jsonify({"message": "Failed to process ride", "error": str(e)}), 500
 
 # GET ALL RIDES
 @ride_request_bp.route("/", methods=["GET"])
@@ -95,7 +133,7 @@ def fetch_ride(ride_id):
 @ride_request_bp.route("/<int:ride_id>", methods=["DELETE"])
 @jwt_required()
 def remove_ride(ride_id):
-    
+
     try:
         delete_ride(ride_id)
         return jsonify({"message": "Ride deleted successfully"}), 200
@@ -103,5 +141,3 @@ def remove_ride(ride_id):
         return jsonify({"message": str(e)}), 404
     except Exception as e:
         return jsonify({"message": "Failed to delete ride", "error": str(e)}), 500
-
-
