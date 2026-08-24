@@ -103,20 +103,18 @@ def generate_invoice_from_rides(corporate_id, start_date, end_date, due_date):
         RideRequest.created_at <= end_date,
     ).all()
 
-
     if not rides:
         raise ValueError("No completed rides found for this period.")
 
     inv_summary = {
-    "Description": ["Base fare", "Commission", "VAT", "Total Fare"],
-    "Amount": [
-        sum(r.base_fare for r in rides),
-        sum(r.commission_amount for r in rides),   
-        sum(r.vat_amount for r in rides),
-        sum(r.total_fare for r in rides),
-    ],
+        "Description": ["Base fare", "Commission", "VAT", "Total Fare"],
+        "Amount": [
+            sum(r.base_fare for r in rides),
+            sum(r.commission_amount for r in rides),
+            sum(r.vat_amount for r in rides),
+            sum(r.total_fare for r in rides),
+        ],
     }
-
 
     # Create invoice
     invoice_data = {
@@ -150,9 +148,13 @@ def record_payment(data):
     # Update invoice with payment details (optional, can be provided at payment time)
     invoice.payment_method = data.get("payment_method", invoice.payment_method)
     invoice.account_number = data.get("account_number", invoice.account_number)
-    invoice.Bank_name = data.get("Bank_name", invoice.Bank_name)
-    invoice.Paybill_number = data.get("Paybill_number", invoice.Paybill_number)
-    invoice.transaction_reference = data.get("transaction_reference", invoice.transaction_reference)
+    if invoice.payment_method == "BANK_TRANSFER":
+        invoice.Bank_name = data.get("Bank_name", invoice.Bank_name)
+        invoice.transaction_reference = data.get(
+            "transaction_reference", invoice.transaction_reference
+        )
+    else:
+        invoice.Paybill_number = data.get("Paybill_number", invoice.Paybill_number)
 
     # Find the platform master wallet
     master_wallet = Wallet.query.filter_by(
@@ -161,7 +163,7 @@ def record_payment(data):
     if not master_wallet:
         raise ValueError("Platform master wallet not found. Please create one.")
 
-    # 6. Credit the master wallet (platform revenue)
+    # Credit the master wallet (platform revenue)
     top_up_wallet(
         wallet_id=master_wallet.wallet_id,
         amount=amount_paid,
@@ -171,15 +173,19 @@ def record_payment(data):
 
     # Mark associated PlatformRevenue records as CONFIRMED
     line_items = InvoiceLineItem.query.filter_by(invoice_id=invoice.invoice_id).all()
-    ride_ids = [item.ride_id for item in line_items]   # ✅ Use the foreign key directly
+    ride_ids = [item.ride_id for item in line_items]  #  Use the foreign key directly
     if ride_ids:
         PlatformRevenue.query.filter(PlatformRevenue.ride_id.in_(ride_ids)).update(
             {"status": "CONFIRMED"}, synchronize_session=False
         )
 
     # Update invoice status and timestamp
-    invoice.status = "PAID"
-    invoice.paid_at = datetime.now()
+    if invoice.payment_method == "BANK_TRANSFER":
+        invoice.status = "PENDING"
+    else:
+        invoice.status = "PAID"
+        invoice.paid_at = datetime.now()
+
     db.session.commit()
 
     return invoice

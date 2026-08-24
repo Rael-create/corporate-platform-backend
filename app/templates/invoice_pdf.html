@@ -101,10 +101,6 @@
       <td class="right">{{ "%.2f"|format(total_vat) }}</td>
     </tr>
 
-    <tr>
-      <td class="label"><strong>Subtotal</strong></td>
-      <td class="right"><strong>{{ "%.2f"|format(subtotal + total_commission) }}</strong></td>
-    </tr>
     <tr class="grand-total">
       <td><strong>Grand Total</strong></td>
       <td class="right"><strong>{{ currency }} {{ "%.2f"|format(invoice.total_amount) }}</strong></td>

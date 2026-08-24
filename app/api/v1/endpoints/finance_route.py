@@ -20,6 +20,7 @@ from app.schemas.finance_schema import (
     InvoiceLineItemSchema,
     UpdateInvoiceStatusSchema,
     platform_revenue_schema,
+    payment_schema,
 )
 from app.services.finance_service import (
     create_invoice,
@@ -35,6 +36,7 @@ finance_bp = Blueprint("finance", __name__, url_prefix="/api/v1/finance")
 
 create_schema = CreateInvoiceSchema()
 update_status_schema = UpdateInvoiceStatusSchema()
+
 
 
 @finance_bp.route("/", methods=["GET"])
@@ -191,6 +193,46 @@ def update_invoice_status_endpoint(invoice_id):
         return jsonify({"message": "Failed to update invoice", "error": str(e)}), 500
 
 
+@finance_bp.route("/generate", methods=["POST"])
+@jwt_required()
+@role_required("SUPER_ADMIN")
+def generate_invoice_from_rides_endpoint():
+    """
+    Auto-generate an invoice from completed rides in a date range.
+    Body: { corporate_id, start_date, end_date, due_date }
+    """
+    data = request.get_json()
+    required = ["corporate_id", "start_date", "end_date", "due_date"]
+    if not all(k in data for k in required):
+        return (
+            jsonify(
+                {
+                    "message": "Missing required fields: corporate_id, start_date, end_date, due_date"
+                }
+            ),
+            400,
+        )
+
+    try:
+        start = datetime.fromisoformat(data["start_date"])
+        end = datetime.fromisoformat(data["end_date"])
+        due = datetime.fromisoformat(data["due_date"])
+        invoice = generate_invoice_from_rides(data["corporate_id"], start, end, due)
+        return (
+            jsonify(
+                {
+                    "message": "Invoice generated successfully",
+                    "invoice_id": invoice.invoice_id,
+                    "invoice_number": invoice.invoice_number,
+                }
+            ),
+            201,
+        )
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": "Failed to generate invoice", "error": str(e)}), 500
+
 @finance_bp.route("/<int:invoice_id>/pdf", methods=["GET"])
 @jwt_required()
 def generate_invoice_pdf(invoice_id):
@@ -252,47 +294,39 @@ def generate_invoice_pdf(invoice_id):
         return jsonify({"message": f"PDF generation failed: {str(e)}"}), 500
 
 
-@finance_bp.route("/generate", methods=["POST"])
+# PAYMENT
+@finance_bp.route("/payments", methods=["POST"])
 @jwt_required()
-@role_required("SUPER_ADMIN")
-def generate_invoice_from_rides_endpoint():
-    """
-    Auto-generate an invoice from completed rides in a date range.
-    Body: { corporate_id, start_date, end_date, due_date }
-    """
+@role_required("SUPER_ADMIN", "CORPORATE_ADMIN")
+def record_invoice_payment():
+    """Record a payment for an invoice."""
     data = request.get_json()
-    required = ["corporate_id", "start_date", "end_date", "due_date"]
-    if not all(k in data for k in required):
-        return (
-            jsonify(
-                {
-                    "message": "Missing required fields: corporate_id, start_date, end_date, due_date"
-                }
-            ),
-            400,
-        )
+    
+    # Validate input
+    errors = payment_schema.validate(data)
+    if errors:
+        return jsonify({"errors": errors}), 400
 
     try:
-        start = datetime.fromisoformat(data["start_date"])
-        end = datetime.fromisoformat(data["end_date"])
-        due = datetime.fromisoformat(data["due_date"])
-        invoice = generate_invoice_from_rides(data["corporate_id"], start, end, due)
-        return (
-            jsonify(
-                {
-                    "message": "Invoice generated successfully",
-                    "invoice_id": invoice.invoice_id,
-                    "invoice_number": invoice.invoice_number,
-                }
-            ),
-            201,
-        )
+        # Call the service – returns the updated invoice
+        updated_invoice = record_payment(data)
+        
+        return jsonify({
+            "message": "Payment recorded successfully",
+            "invoice_id": updated_invoice.invoice_id,
+            "status": updated_invoice.status,
+            "transaction_reference": updated_invoice.transaction_reference,
+            "payment_method": updated_invoice.payment_method,
+            "account_number": updated_invoice.account_number,
+            "bank_name": updated_invoice.Bank_name,
+            "paybill_number": updated_invoice.Paybill_number,
+            "paid_at": updated_invoice.paid_at.isoformat() if updated_invoice.paid_at else None,
+        }), 201
+
     except ValueError as e:
         return jsonify({"message": str(e)}), 400
     except Exception as e:
-        return jsonify({"message": "Failed to generate invoice", "error": str(e)}), 500
-
-
+        return jsonify({"message": f"Failed to record payment: {str(e)}"}), 500
 
 # ---  RECORD PLATFORM REVENUE ENDPOINT ---
 @finance_bp.route("/revenues", methods=["POST"])

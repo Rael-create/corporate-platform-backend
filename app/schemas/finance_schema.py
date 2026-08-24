@@ -38,6 +38,18 @@ class PlatformRevenueSchema(Schema):
     amount = fields.Float(required=True, error_messages={"required": "Revenue amount is required."})
     revenue_type = fields.Str(required=True, validate=validate.OneOf(["COMMISSION", "VAT"]), error_messages={"required": "Revenue type is required."})
 
+class PaymentSchema(Schema):
+    """Schema to validate payment data for invoice payment."""
+    invoice_id = fields.Int(required=True, error_messages={"required": "Invoice ID is required."})
+    amount_paid = fields.Float(required=True, error_messages={"required": "Payment amount is required."})
+    payment_method = fields.Str(required=False, allow_none=True, validate=validate.OneOf(INVOICE_PAYMENT_METHODS))
+    account_number = fields.Str(required=False, allow_none=True)
+    Bank_name = fields.Str(required=False, allow_none=True)
+    Paybill_number = fields.Str(required=False, allow_none=True)
+    transaction_reference = fields.Str(required=False, allow_none=True)
+
 
 # Instantiate the schemas
 platform_revenue_schema = PlatformRevenueSchema()
+payment_schema = PaymentSchema()   
+
