@@ -28,15 +28,6 @@ class UpdateInvoiceStatusSchema(Schema):
     status = fields.Str(required=True, validate=validate.OneOf(InvoiceStatus))
 
 
-class PlatformRevenueSchema(Schema):
-    """Schema to validate incoming platform revenue data."""
-    corporate_id = fields.Int(required=True, error_messages={"required": "Corporate ID is required."})
-    staff_id = fields.Int(required=False, allow_none=True)
-    ride_id = fields.Int(required=False, allow_none=True)
-    invoice_id = fields.Int(required=False, allow_none=True)
-    
-    amount = fields.Float(required=True, error_messages={"required": "Revenue amount is required."})
-    revenue_type = fields.Str(required=True, validate=validate.OneOf(["COMMISSION", "VAT"]), error_messages={"required": "Revenue type is required."})
 
 class PaymentSchema(Schema):
     """Schema to validate payment data for invoice payment."""
@@ -50,6 +41,5 @@ class PaymentSchema(Schema):
 
 
 # Instantiate the schemas
-platform_revenue_schema = PlatformRevenueSchema()
 payment_schema = PaymentSchema()   
 

@@ -79,7 +79,11 @@ def process_ride_after_authorization(
                 ride_id=new_ride.ride_id,
                 amount=new_ride.vat_amount,
                 revenue_type="VAT",
-                status="CONFIRMED",
+                status=(
+                    "PENDING"
+                    if wallet.wallet_type == "PLATFORM_FUNDED"
+                    else "CONFIRMED"
+                ),
             )
             db.session.add(vat_revenue)
 

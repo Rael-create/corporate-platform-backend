@@ -19,7 +19,6 @@ from app.schemas.finance_schema import (
     CreateInvoiceSchema,
     InvoiceLineItemSchema,
     UpdateInvoiceStatusSchema,
-    platform_revenue_schema,
     payment_schema,
 )
 from app.services.finance_service import (
@@ -29,14 +28,14 @@ from app.services.finance_service import (
     update_invoice_status,
     generate_invoice_from_rides,
     record_payment,
-    record_platform_revenue,
+    send_invoice_reminder,
+    confirm_invoice_payment,
 )
 
 finance_bp = Blueprint("finance", __name__, url_prefix="/api/v1/finance")
 
 create_schema = CreateInvoiceSchema()
 update_status_schema = UpdateInvoiceStatusSchema()
-
 
 
 @finance_bp.route("/", methods=["GET"])
@@ -132,6 +131,11 @@ def fetch_invoice(invoice_id):
                     "company_name": settings.company_name,
                     "company_address": settings.company_address,
                 },
+                "payment_method": invoice.payment_method,
+                "account_number": invoice.account_number,
+                "Bank_name": invoice.Bank_name,
+                "Paybill_number": invoice.Paybill_number,
+                "transaction_reference": invoice.transaction_reference,
             }
         ),
         200,
@@ -233,6 +237,7 @@ def generate_invoice_from_rides_endpoint():
     except Exception as e:
         return jsonify({"message": "Failed to generate invoice", "error": str(e)}), 500
 
+
 @finance_bp.route("/<int:invoice_id>/pdf", methods=["GET"])
 @jwt_required()
 def generate_invoice_pdf(invoice_id):
@@ -301,7 +306,7 @@ def generate_invoice_pdf(invoice_id):
 def record_invoice_payment():
     """Record a payment for an invoice."""
     data = request.get_json()
-    
+
     # Validate input
     errors = payment_schema.validate(data)
     if errors:
@@ -310,52 +315,69 @@ def record_invoice_payment():
     try:
         # Call the service – returns the updated invoice
         updated_invoice = record_payment(data)
-        
-        return jsonify({
-            "message": "Payment recorded successfully",
-            "invoice_id": updated_invoice.invoice_id,
-            "status": updated_invoice.status,
-            "transaction_reference": updated_invoice.transaction_reference,
-            "payment_method": updated_invoice.payment_method,
-            "account_number": updated_invoice.account_number,
-            "bank_name": updated_invoice.Bank_name,
-            "paybill_number": updated_invoice.Paybill_number,
-            "paid_at": updated_invoice.paid_at.isoformat() if updated_invoice.paid_at else None,
-        }), 201
+
+        return (
+            jsonify(
+                {
+                    "message": "Payment recorded successfully",
+                    "invoice_id": updated_invoice.invoice_id,
+                    "status": updated_invoice.status,
+                    "transaction_reference": updated_invoice.transaction_reference,
+                    "payment_method": updated_invoice.payment_method,
+                    "account_number": updated_invoice.account_number,
+                    "bank_name": updated_invoice.Bank_name,
+                    "paybill_number": updated_invoice.Paybill_number,
+                    "paid_at": (
+                        updated_invoice.paid_at.isoformat()
+                        if updated_invoice.paid_at
+                        else None
+                    ),
+                }
+            ),
+            201,
+        )
 
     except ValueError as e:
         return jsonify({"message": str(e)}), 400
     except Exception as e:
         return jsonify({"message": f"Failed to record payment: {str(e)}"}), 500
 
-# ---  RECORD PLATFORM REVENUE ENDPOINT ---
-@finance_bp.route("/revenues", methods=["POST"])
+
+@finance_bp.route("/<int:invoice_id>/remind", methods=["POST"])
 @jwt_required()
 @role_required("SUPER_ADMIN")
-def record_revenue_endpoint():
-    data = request.get_json()
-    errors = platform_revenue_schema.validate(data)
-    if errors:
-        return jsonify(errors), 400
-
+def send_invoice_reminder_endpoint(invoice_id):
     try:
-        new_revenue = record_platform_revenue(data)
+        message = send_invoice_reminder(invoice_id)
+        return jsonify({"message": message}), 200
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": f"Failed to send reminder: {str(e)}"}), 500
+
+
+@finance_bp.route("/<int:invoice_id>/confirm", methods=["POST"])
+@jwt_required()
+@role_required("SUPER_ADMIN")
+def confirm_invoice_payment_endpoint(invoice_id):
+    data = request.get_json() or {}
+    transaction_reference = data.get("transaction_reference")
+    try:
+        invoice = confirm_invoice_payment(invoice_id)
         return (
             jsonify(
                 {
-                    "message": "Platform revenue recorded successfully",
-                    "revenue": {
-                        "revenue_id": new_revenue.revenue_id,
-                        "corporate_id": new_revenue.corporate_id,
-                        "amount": new_revenue.amount,
-                        "revenue_type": new_revenue.revenue_type,
-                        "status": new_revenue.status,
-                    },
+                    "message": f"Invoice {invoice.invoice_number} confirmed as PAID.",
+                    "invoice_id": invoice.invoice_id,
+                    "status": invoice.status,
+                    "paid_at": invoice.paid_at.isoformat() if invoice.paid_at else None,
+                    "transaction_reference": invoice.transaction_reference,
+
                 }
             ),
-            201,
+            200,
         )
     except ValueError as e:
         return jsonify({"message": str(e)}), 400
     except Exception as e:
-        return jsonify({"message": "Failed to record revenue", "error": str(e)}), 500
+        return jsonify({"message": f"Failed to confirm payment: {str(e)}"}), 500

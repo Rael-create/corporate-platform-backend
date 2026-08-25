@@ -4,6 +4,7 @@ from app.core.database import db
 from app.models.finance import Invoice, InvoiceLineItem, PlatformRevenue
 from app.models.corporate import Corporate
 from app.models.ride_request import RideRequest, RideStatus
+from app.models.users import User
 from app.models.wallet import Wallet
 from app.services.wallet_service import top_up_wallet
 
@@ -148,11 +149,11 @@ def record_payment(data):
     # Update invoice with payment details (optional, can be provided at payment time)
     invoice.payment_method = data.get("payment_method", invoice.payment_method)
     invoice.account_number = data.get("account_number", invoice.account_number)
-    if invoice.payment_method == "BANK_TRANSFER":
-        invoice.Bank_name = data.get("Bank_name", invoice.Bank_name)
-        invoice.transaction_reference = data.get(
+    invoice.transaction_reference = data.get(
             "transaction_reference", invoice.transaction_reference
         )
+    if invoice.payment_method == "BANK_TRANSFER":
+        invoice.Bank_name = data.get("Bank_name", invoice.Bank_name)
     else:
         invoice.Paybill_number = data.get("Paybill_number", invoice.Paybill_number)
 
@@ -180,32 +181,65 @@ def record_payment(data):
         )
 
     # Update invoice status and timestamp
-    if invoice.payment_method == "BANK_TRANSFER":
-        invoice.status = "PENDING"
-    else:
-        invoice.status = "PAID"
-        invoice.paid_at = datetime.now()
+    invoice.status = "PENDING"
+    # if invoice.payment_method == "BANK_TRANSFER":
+    #     invoice.status = "PENDING"
+    # else:
+    #     invoice.status = "PAID"
+    #     invoice.paid_at = datetime.now()
 
     db.session.commit()
 
     return invoice
 
+# finance_service.py
 
-def record_platform_revenue(data):
-    """Records a specific revenue stream (Commission, VAT, etc.) for the platform."""
 
-    # Create the revenue record
-    new_revenue = PlatformRevenue(
-        corporate_id=data["corporate_id"],
-        staff_id=data.get("staff_id"),
-        ride_id=data.get("ride_id"),
-        invoice_id=data.get("invoice_id"),
-        amount=data["amount"],
-        revenue_type=data["revenue_type"],
-        status="CONFIRMED",  # Automatically confirmed when manually recorded by Admin
-    )
 
-    db.session.add(new_revenue)
+def send_invoice_reminder(invoice_id):
+    """
+    Send an email reminder to all corporate admins of the invoice's corporate.
+    Returns a message string on success, raises ValueError on failure.
+    """
+    invoice = Invoice.query.get(invoice_id)
+    if not invoice:
+        raise ValueError("Invoice not found.")
+
+    if invoice.status != "UNPAID":
+        raise ValueError("Reminders can only be sent for UNPAID invoices.")
+
+    # Fetch corporate admins (users with role 'CORPORATE_ADMIN' and matching corporate_id)
+    admins = User.query.filter_by(
+        corporate_id=invoice.corporate_id,
+        role="CORPORATE_ADMIN"
+    ).all()
+
+    if not admins:
+        raise ValueError("No corporate admins found for this corporate.")
+
+    # TODO: Implement actual email sending logic here.
+    # Example: send_email(
+    #     subject=f"Invoice {invoice.invoice_number} Reminder",
+    #     recipients=[admin.email for admin in admins],
+    #     body=f"Dear team, this is a reminder that invoice {invoice.invoice_number} is still unpaid..."
+    # )
+
+    # Return a success message (can be used by the endpoint)
+    return f"Reminder sent for invoice {invoice.invoice_number}"
+
+
+def confirm_invoice_payment(invoice_id, transaction_reference=None):
+    invoice = Invoice.query.get(invoice_id)
+    if not invoice:
+        raise ValueError("Invoice not found.")
+
+    if invoice.status != "PENDING":
+        raise ValueError("Only PENDING invoices can be confirmed.")
+
+    invoice.status = "PAID"
+    invoice.paid_at = datetime.now()
+    if transaction_reference:
+        invoice.transaction_reference = transaction_reference
     db.session.commit()
 
-    return new_revenue
+    return invoice
