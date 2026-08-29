@@ -19,17 +19,18 @@ class CreateInvoiceSchema(Schema):
     corporate_id = fields.Int(required=True, error_messages={"required": "Corporate ID is required."})
     due_date = fields.DateTime(required=True, format="%Y-%m-%d", error_messages={"required": "Due date is required (Format: YYYY-MM-DD)."})
     payment_method = fields.Str(required=False,validate=validate.OneOf(INVOICE_PAYMENT_METHODS, error="Invalid payment method selected."),error_messages={"required": "Payment method is required."})
-    account_number = fields.Str(required=True, error_messages={"required": "Account number is required."})
-    Bank_name = fields.Str(required=True, error_messages={"required": "Bank name is required."})
+    account_number = fields.Str(required=False, error_messages={"required": "Account number is required."})
+    Bank_name = fields.Str(required=False, error_messages={"required": "Bank name is required."})
     Paybill_number = fields.Str(required=False, allow_none=True)
     line_items = fields.List(fields.Nested(InvoiceLineItemSchema), required=True, error_messages={"required": "Line items are required."})
+    decline_reason = fields.Str(required=False, allow_none=True)
 
 class UpdateInvoiceStatusSchema(Schema):
     status = fields.Str(required=True, validate=validate.OneOf(InvoiceStatus))
 
 
 
-class PaymentSchema(Schema):
+class InvoicePaymentSchema(Schema):
     """Schema to validate payment data for invoice payment."""
     invoice_id = fields.Int(required=True, error_messages={"required": "Invoice ID is required."})
     amount_paid = fields.Float(required=True, error_messages={"required": "Payment amount is required."})
@@ -39,7 +40,12 @@ class PaymentSchema(Schema):
     Paybill_number = fields.Str(required=False, allow_none=True)
     transaction_reference = fields.Str(required=False, allow_none=True)
 
+class DeclineInvoiceSchema(Schema):
+    decline_reason = fields.Str(required=True, error_messages={"required": "Decline reason is required."})
+
 
 # Instantiate the schemas
-payment_schema = PaymentSchema()   
+payment_schema = InvoicePaymentSchema() 
+decline_invoice_schema = DeclineInvoiceSchema()
+
 

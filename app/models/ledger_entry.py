@@ -14,7 +14,8 @@ TRANSACTION_TYPES = [
     "CORPORATE_TOPUP",
     "INVOICE_PAYMENT",
     "TRIP_REVERSAL",
-    "COMMISSION_CHARGE"
+    "COMMISSION_CHARGE",
+    "INVOICE_REVERSAL"
 ]
 
     
@@ -28,7 +29,7 @@ class LedgerEntry(db.Model):
     transaction_type = db.Column(db.Enum(*TRANSACTION_TYPES), nullable=False)
     transaction_class = db.Column(db.Enum(*TRANSACTION_CLASSES), nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    #balance
+    
     
     created_at = db.Column(db.DateTime, default=datetime.now)
 

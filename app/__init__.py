@@ -65,6 +65,8 @@ def create_app():
     from app.models.ride_counter import RideCounter
     from app.models.finance import PlatformRevenue, Invoice
     from app.models.platform_settings import PlatformSettings
+    from app.models.mpesa_transaction import MpesaTransaction
+
 
     
     

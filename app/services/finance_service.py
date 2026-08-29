@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime
+from multiprocessing import synchronize
 
 from app.core.database import db
 from app.models.finance import Invoice, InvoiceLineItem, PlatformRevenue
@@ -6,6 +7,7 @@ from app.models.corporate import Corporate
 from app.models.ride_request import RideRequest, RideStatus
 from app.models.users import User
 from app.models.wallet import Wallet
+from app.services.ledger_entry_service import create_ledger_entry
 from app.services.wallet_service import top_up_wallet
 
 
@@ -229,6 +231,7 @@ def send_invoice_reminder(invoice_id):
 
 
 def confirm_invoice_payment(invoice_id, transaction_reference=None):
+
     invoice = Invoice.query.get(invoice_id)
     if not invoice:
         raise ValueError("Invoice not found.")
@@ -242,4 +245,56 @@ def confirm_invoice_payment(invoice_id, transaction_reference=None):
         invoice.transaction_reference = transaction_reference
     db.session.commit()
 
+    return invoice
+
+
+def reverse_invoice_payment(invoice_id, decline_reason, reversed_by=None):
+
+    invoice = Invoice.query.get(invoice_id)
+    if not invoice:
+        raise ValueError("Invoice not found.")
+
+    if invoice.status != "PENDING":
+        raise ValueError("Only PENDING invoices can be reversed.")
+
+    if not decline_reason:
+        raise ValueError("Decline reason is required.")
+    
+    master_wallet = Wallet.query.filter_by(
+        corporate_id=None, wallet_type="PLATFORM_FUNDED"
+    ).first()
+    if not master_wallet:
+        raise ValueError("Platform master wallet not found.")
+
+    # Deduct
+    create_ledger_entry({
+        "wallet_id": master_wallet.wallet_id,
+        "transaction_type": "INVOICE_REVERSAL",
+        "transaction_class": "Debit",
+        "amount": invoice.total_amount,
+        "ride_id": None,
+    })
+
+    # Revert PlatformRevenue status to PENDING
+    line_items = InvoiceLineItem.query.filter_by(invoice_id=invoice.invoice_id).all()
+    ride_ids = [item.ride_id for item in line_items ]
+
+    if ride_ids:
+        PlatformRevenue.query.filter(PlatformRevenue.ride_id.in_(ride_ids)).update(
+            {"status": "PENDING"}, synchronize_session=False
+        )
+
+    #update invoice status
+    invoice.status = "UNPAID"
+    invoice.decline_reason = decline_reason
+    invoice.paid_at = None
+    invoice.transaction_reference = None
+
+    #clear payment details
+    invoice.payment_method = None
+    invoice.account_number = None
+    invoice.Bank_name = None
+    invoice.Paybill_number = None
+
+    db.session.commit()
     return invoice

@@ -1,5 +1,6 @@
 from app.core.database import db
-from datetime import datetime, timedelta
+from datetime import datetime
+from app.models.users import User
 
 InvoiceStatus = [
     "UNPAID",
@@ -26,7 +27,7 @@ class Invoice(db.Model):
     corporate_id = db.Column(db.Integer, db.ForeignKey('corporates.corporate_id'), nullable=False)
     total_amount = db.Column(db.Float, nullable=False)
     base_fare = db.Column(db.Float, nullable=False)
-    commision = db.Column(db.Float, nullable=False)
+    commission = db.Column(db.Float, nullable=False)
     vat = db.Column(db.Float, nullable=False)
     status = db.Column(db.Enum(*InvoiceStatus), default="UNPAID", nullable=False)
 
@@ -35,10 +36,13 @@ class Invoice(db.Model):
     Bank_name = db.Column(db.String(100), nullable=True)
     Paybill_number = db.Column(db.String(100), nullable=True)
     transaction_reference = db.Column(db.String(100), unique=True, nullable=True) 
+    decline_reason = db.Column(db.String(255), nullable=True)
 
-    paid_at = db.Column(db.DateTime, default=datetime.now)
+    paid_at = db.Column(db.DateTime, nullable=True)
     due_date = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    reversed_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    reversed_at = db.Column(db.DateTime, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
 

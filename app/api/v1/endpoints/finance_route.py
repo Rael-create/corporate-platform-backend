@@ -20,6 +20,7 @@ from app.schemas.finance_schema import (
     InvoiceLineItemSchema,
     UpdateInvoiceStatusSchema,
     payment_schema,
+    decline_invoice_schema,
 )
 from app.services.finance_service import (
     create_invoice,
@@ -30,6 +31,7 @@ from app.services.finance_service import (
     record_payment,
     send_invoice_reminder,
     confirm_invoice_payment,
+    reverse_invoice_payment,
 )
 
 finance_bp = Blueprint("finance", __name__, url_prefix="/api/v1/finance")
@@ -69,6 +71,7 @@ def list_invoices():
                 "status": inv.status,
                 "due_date": inv.due_date.isoformat(),
                 "created_at": inv.created_at.isoformat(),
+                "transaction_reference": inv.transaction_reference,
             }
         )
     return jsonify(result), 200
@@ -381,3 +384,40 @@ def confirm_invoice_payment_endpoint(invoice_id):
         return jsonify({"message": str(e)}), 400
     except Exception as e:
         return jsonify({"message": f"Failed to confirm payment: {str(e)}"}), 500
+
+
+@finance_bp.route("/<int:invoice_id>/reverse", methods=["POST"])
+@jwt_required()
+@role_required("SUPER_ADMIN")
+def reverse_invoice_endpoint(invoice_id):
+
+    data = request.get_json()
+    
+    # Validate the request body
+    errors = decline_invoice_schema.validate(data)
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    try:
+        # Get the current user for auditing
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+
+        # Call the service function
+        invoice = reverse_invoice_payment(
+            invoice_id=invoice_id,
+            decline_reason=data["decline_reason"],
+            reversed_by=user.user_id if user else None
+        )
+
+        return jsonify({
+            "message": f"Invoice {invoice.invoice_number} reversed successfully.",
+            "invoice_id": invoice.invoice_id,
+            "status": invoice.status,
+            "decline_reason": invoice.decline_reason,
+        }), 200
+
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": f"Failed to reverse payment: {str(e)}"}), 500
