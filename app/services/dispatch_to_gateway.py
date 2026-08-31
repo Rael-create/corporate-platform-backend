@@ -1,109 +1,123 @@
 import uuid
 import logging
-from typing import Tuple, Dict, Any
+from app.services.mpesa_service import send_money, send_money_to_plb, send_to_till, send_to_paybill
+from app.core.database import db
 
-# from app.core.database import db
-# from app.models.gateway_payouts import GatewayPayout
+
 
 logger = logging.getLogger(__name__)
 
 
 def dispatch_to_gateway(ride: int,payout: int,db,simulate_failure: bool = False,simulate_timeout: bool = False):
-    """
-    Mock function to dispatch B2C/B2B payout request to a payment gateway (e.g., M-Pesa Daraja API).
 
-    Args:
-        ride_id: Database ID of the pending ride request
-        target_identifier: Matatu Till Number, Paybill, or Phone Number
-        amount: Base fare amount to be dispatched (matatu_payout)
-        simulate_failure: Force a synchronous gateway rejection for testing
-        simulate_timeout: Force a simulated timeout error for testing
 
-    Returns:
-        Tuple containing:
-        - success (bool): True if gateway synchronously accepted request for processing
-        - gateway_reference (str): Tracking ID assigned by gateway (or empty string)
-        - raw_response (dict): Mock JSON response payload from the API gateway
-    """
+    # amount, target_identifier = ride.base_fare, ride.matatu_identifier
 
-    amount, target_identifier = ride.base_fare, ride.matatu_identifier
+    ride_id = ride.ride_id
 
-    logger.info(
-        f"[GATEWAY DISPATCH] Initiating payout of KES {amount} for Ride ID: {ride.ride_id} -> Target: {target_identifier}"
-    )
+    try:
+        #  Extract payment details
+        payment_method = payout.payment_method
+        target_identifier = payout.target_identifier
+        amount = payout.amount_sent
 
-    # ride = RideRequest.query.get(ride_id)
-    # payout = GatewayPayout.query.filter_by(ride_id=ride_id).first()
-
-    payload = {
-        "InitiatorName": "MATATU_PLATFORM_API",
-        "CommandID": "BusinessPayment",
-        "Amount": str(amount),
-        "PartyB": target_identifier,
-        "Remarks": f"Matatu Trip Payment #{ride.ride_id}",
-        "QueueTimeOutURL": "https://api.yourdomain.com/api/v1/webhooks/gateway/timeout",
-        "ResultURL": "https://api.yourdomain.com/api/v1/webhooks/gateway/callback",
-    }
-
-    # Simulate Network Timeout / Connection Error
-    if simulate_timeout:
-        logger.error(
-            f"[GATEWAY ERROR] Network timeout while connecting to gateway endpoint for Ride ID: {ride.ride_id}"
+        logger.info(
+            f"[GATEWAY DISPATCH] Processing payout of KES {amount} for Ride #{ride_id} "
+            f"via {payment_method} -> Target: {target_identifier}"
         )
 
-        # Update payout status
+        # Simulate timeout (if you want to handle it)
+        if simulate_timeout:
+            logger.warning(f"[GATEWAY DISPATCH] Simulated timeout for Ride #{ride_id}")
+            payout.status = "FAILED"
+            payout.failure_reason = "Simulated timeout – callback not received"
+            db.session.commit()
+            return False, payout, {"ResponseCode": "504", "ResponseDescription": "Timeout"}
+
+        #  For testing: simulate failure
+        if simulate_failure:
+            logger.warning(f"[GATEWAY DISPATCH] Simulated failure for Ride #{ride_id}")
+            payout.status = "FAILED"
+            payout.failure_reason = "Simulated gateway failure for testing"
+            db.session.commit()
+            return False, payout, {"ResponseCode": "999", "ResponseDescription": "Simulated failure"}
+
+        #  For PAYBILL, we need an account reference
+        account_reference = getattr(payout, 'account_reference', None)
+        if payment_method == "PAYBILL" and not account_reference:
+            account_reference = f"RIDE{ride_id}"
+
+        #  Call the appropriate M-Pesa API
+        mpesa_response = None
+
+        if payment_method == "SEND_MONEY":
+            mpesa_response = send_money(
+                phone_number=target_identifier,
+                amount=amount,
+                transaction_desc=f"Ride #{ride_id}"
+            )
+        elif payment_method == "POCHI_LA_BIASHARA":
+            mpesa_response = send_money_to_plb(
+                phone_number=target_identifier,
+                amount=amount,
+                transaction_desc=f"Ride #{ride_id}"
+            )
+        elif payment_method == "BUY_GOODS":
+            if not account_reference:
+                account_reference = f"RIDE{ride_id}"
+            mpesa_response = send_to_till(
+                till_number=target_identifier,
+                amount=amount,
+                account_reference=account_reference,
+                transaction_desc=f"Ride #{ride_id}"
+            )
+        elif payment_method == "PAYBILL":
+            # Split the target_identifier
+            parts = target_identifier.split('|')
+            if len(parts) !=2:
+                raise ValueError(f"Invalid PAYBILL format. Expected 'paybill|account', got: {target_identifier}")
+
+            paybill_number = parts[0]
+            account_number = parts[1]
+
+            # Remove leading zeros from account number if needed
+            account_number = account_number.lstrip('0')
+
+            mpesa_response = send_to_paybill(
+                paybill_number=paybill_number,
+                account_number=account_number,
+                amount=amount,
+                transaction_desc=f"Ride #{ride_id}"
+            )
+        else:
+            raise ValueError(f"Unsupported payment method: {payment_method}")
+
+        #  Check if M-Pesa accepted the request
+        if mpesa_response.get("ResponseCode") == "0":
+            # Update the payout with ConversationID
+            payout.gateway_reference = mpesa_response.get("ConversationID")
+            # Status remains PENDING – callback will change it to SUCCESS/FAILED
+            db.session.commit()
+            logger.info(
+                f"[GATEWAY DISPATCH] Payout accepted by M-Pesa. "
+                f"ConversationID: {payout.gateway_reference}"
+            )
+            return True, payout, mpesa_response
+        else:
+            # M-Pesa rejected the request immediately
+            payout.status = "FAILED"
+            payout.failure_reason = mpesa_response.get("ResponseDescription", "M-Pesa rejected")
+            db.session.commit()
+            logger.error(
+                f"[GATEWAY DISPATCH] M-Pesa rejected payout for Ride #{ride_id}: "
+                f"{payout.failure_reason}"
+            )
+            return False, payout, mpesa_response
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"[GATEWAY DISPATCH] Error processing payout for Ride #{ride_id}: {str(e)}")
         payout.status = "FAILED"
-        payout.failure_reason = "Gateway Timeout. Request could not reach provider."
+        payout.failure_reason = str(e)
         db.session.commit()
-
-        return (
-            False,
-            "",
-            {
-                "ResponseCode": "504",
-                "ResponseDescription": "Gateway Timeout. Request could not reach provider.",
-            },
-        )
-
-    # Simulate Synchronous Gateway Rejection (e.g., Invalid Till Number format)
-    if simulate_failure:
-        logger.warning(
-            f"[GATEWAY REJECT] Gateway rejected payout payload for Ride ID: {ride.ride_id}"
-        )
-
-        # Mark payout and ride as FAILED in database
-        payout.status = "FAILED"
-        payout.failure_reason = "Invalid Receiver Identifier / Till Number."
-        ride.status = "FAILED"
-        db.session.commit()
-
-        return (
-            False,
-            "",
-            {
-                "ResponseCode": "C2B00012",
-                "ResponseDescription": "Invalid Receiver Identifier / Till Number.",
-            },
-        )
-
-    # Simulate Successful Acceptance (HTTP 200 OK)
-    # Generate mock Conversation / Tracking Reference ID (e.g., M-Pesa QWE123RTY)
-    mock_conversation_id = f"MPESA_{uuid.uuid4().hex[:8].upper()}"
-
-    mock_response = {
-        "OriginatorConversationID": f"ORG_{uuid.uuid4().hex[:8].upper()}",
-        "ConversationID": mock_conversation_id,
-        "ResponseCode": "0",
-        "ResponseDescription": "Accept the service request successfully.",
-    }
-
-    # Store initial tracking reference on the pending Payout record
-    payout.gateway_reference = mock_conversation_id
-    payout.status = "SUCCESS"  # Awaiting async webhook callback
-    db.session.commit()
-
-    logger.info(
-        f"[GATEWAY SUCCESS] Payout queued successfully by Gateway. Ref: {mock_conversation_id}"
-    )
-
-    return True, mock_conversation_id, mock_response
+        return False, payout, {"error": str(e)}

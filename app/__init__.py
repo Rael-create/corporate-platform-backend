@@ -68,6 +68,11 @@ def create_app():
     from app.models.mpesa_transaction import MpesaTransaction
 
 
+    # Start scheduler
+    from app.scheduler import start_scheduler
+    start_scheduler(app)
+
+
     
-    
+
     return app

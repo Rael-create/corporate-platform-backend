@@ -25,6 +25,7 @@ class GatewayPayout(db.Model):
     status = db.Column(db.Enum(*PayoutStatus), default="PENDING", nullable=False)
     gateway_reference = db.Column(db.String(100), nullable=True)
     failure_reason = db.Column(db.String(255), nullable=True)
+
     
     created_at = db.Column(db.DateTime, default=datetime.now)
 

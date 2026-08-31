@@ -87,7 +87,6 @@ def process_ride_after_authorization(
             )
             db.session.add(vat_revenue)
 
-        # update platform revenue wallet using the new balance -check if its there
 
         # Update rides used
         auth_ride.update_rides_used()
