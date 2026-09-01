@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
-from app.services.mpesa_service import stk_push, query_status
+from app.models.gateway_payouts import GatewayPayout
+from app.models.ride_request import RideRequest
+from app.services.mpesa_service import stk_push, query_status, send_money
 from app.models.mpesa_transaction import MpesaTransaction
 from app.core.database import db
 from app.schemas.mpesa_schema import STKPushRequestSchema
@@ -88,6 +90,7 @@ def query_stk_push_status():
 
 @mpesa_bp.route("/callback", methods=["POST"])
 def mpesa_callback():
+
     """
     Receives the final transaction result from Safaricom.
     Updates the transaction status and saves receipt details.
@@ -142,4 +145,114 @@ def mpesa_callback():
         # Even if we error, M-Pesa expects a 200 with ResultCode 0 to stop retries.
         # Log the error, but return success to M-Pesa.
         print(f"Callback error: {e}")  # Replace with proper logging
+        return jsonify({"ResultCode": 0, "ResultDesc": "Success"}), 200
+
+@mpesa_bp.route("/b2c/send", methods=["POST"])
+def test_b2c_send():
+    """
+    Test B2C send money.
+    Expected JSON:
+    {
+        "phone_number": "254708374149",
+        "amount": 10,
+        "transaction_desc": "Test payment",
+        "ride_id": 123   # 👈 Must be a valid ride ID
+    }
+    """
+    try:
+        data = request.json
+        phone_number = data.get("phone_number")
+        amount = data.get("amount")
+        transaction_desc = data.get("transaction_desc", "Test B2C payment")
+        ride_id = data.get("ride_id")
+
+        if not phone_number or not amount:
+            return jsonify({"error": "phone_number and amount required"}), 400
+
+        if not ride_id:
+            return jsonify({"error": "ride_id is required"}), 400
+
+        # Verify the ride exists
+        ride = RideRequest.query.get(ride_id)
+        if not ride:
+            return jsonify({"error": f"Ride with ID {ride_id} not found"}), 404
+
+        # Call the B2C function
+        response = send_money(
+            phone_number=phone_number,
+            amount=amount,
+            transaction_desc=transaction_desc
+        )
+
+        # Save to GatewayPayout with the ride_id
+        payout = GatewayPayout(
+            ride_id=ride_id,
+            target_identifier=phone_number,
+            amount_sent=amount,
+            payment_method="SEND_MONEY",
+            status="PENDING",
+            gateway_reference=response.get("ConversationID")
+        )
+        db.session.add(payout)
+        db.session.commit()
+
+        return jsonify({
+            "message": "B2C request sent successfully",
+            "response": response,
+            "payout_id": payout.payout_id,
+            "ride_id": ride_id
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+
+@mpesa_bp.route("/b2c/result", methods=["POST"])
+def b2c_result():
+    """B2C Result URL – called when platform pays a driver."""
+    try:
+        data = request.get_json()
+        result = data.get("Result", {})
+        
+        conversation_id = result.get("ConversationID")
+        result_code = result.get("ResultCode")
+        result_desc = result.get("ResultDesc")
+        
+        print(f"✅ B2C Callback received: {conversation_id} -> ResultCode: {result_code}")
+        
+        # Update GatewayPayout status 
+        payout = GatewayPayout.query.filter_by(gateway_reference=conversation_id).first()
+        if payout:
+            if result_code == 0:
+                payout.status = "SUCCESS"
+            else:
+                payout.status = "FAILED"
+                payout.failure_reason = result_desc
+            db.session.commit()
+        
+        return jsonify({"ResultCode": 0, "ResultDesc": "Success"}), 200
+    except Exception as e:
+        print(f"❌ B2C Result error: {e}")
+        return jsonify({"ResultCode": 0, "ResultDesc": "Success"}), 200
+
+@mpesa_bp.route("/b2c/timeout", methods=["POST"])
+def b2c_timeout():
+    """B2C Timeout URL – called if M-Pesa doesn't get a response."""
+    print("⏰ B2C Timeout received")
+    try:
+        data = request.get_json()
+        conversation_id = data.get("ConversationID")
+        
+        # Update GatewayPayout to FAILED
+        payout = GatewayPayout.query.filter_by(gateway_reference=conversation_id).first()
+        if payout:
+            payout.status = "FAILED"
+            payout.failure_reason = "Transaction timeout – callback not received from M-Pesa"
+            db.session.commit()
+            print(f"⏰ Payout {payout.payout_id} marked as FAILED due to timeout")
+        
+        return jsonify({"ResultCode": 0, "ResultDesc": "Success"}), 200
+    except Exception as e:
+        print(f"❌ B2C Timeout error: {e}")
         return jsonify({"ResultCode": 0, "ResultDesc": "Success"}), 200

@@ -1,14 +1,16 @@
 import base64
 import datetime
+import uuid
 import requests
 from app.core.config import settings
+
 
 # HELPER: Get Access Token
 def _get_access_token():
     url = f"{settings.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
     auth_string = f"{settings.MPESA_CONSUMER_KEY}:{settings.MPESA_CONSUMER_SECRET}"
     encoded_auth = base64.b64encode(auth_string.encode()).decode()
-    
+
     headers = {"Authorization": f"Basic {encoded_auth}"}
     response = requests.get(url, headers=headers)
     response.raise_for_status()
@@ -24,25 +26,23 @@ def encrypt_initiator_password(password, cert_path):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import padding
     from cryptography.hazmat.backends import default_backend
-    
+
     with open(cert_path, "rb") as f:
         cert_data = f.read()
-    
+
     cert = serialization.load_pem_x509_certificate(cert_data, default_backend())
     public_key = cert.public_key()
-    
-    encrypted = public_key.encrypt(
-        password.encode('utf-8'),
-        padding.PKCS1v15()
-    )
-    
-    return base64.b64encode(encrypted).decode('utf-8')
+
+    encrypted = public_key.encrypt(password.encode("utf-8"), padding.PKCS1v15())
+
+    return base64.b64encode(encrypted).decode("utf-8")
+
 
 #  STK Push
 def stk_push(phone_number, amount, account_reference, transaction_desc="Payment"):
     #  Get Access Token
     access_token = _get_access_token()
-    
+
     #  Generate timestamp and password
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     password_str = f"{settings.MPESA_SHORTCODE}{settings.MPESA_PASSKEY}{timestamp}"
@@ -82,7 +82,7 @@ def query_status(checkout_request_id):
 
     #  Get Access Token
     access_token = _get_access_token()
-    
+
     #  Generate timestamp and password
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     password_str = f"{settings.MPESA_SHORTCODE}{settings.MPESA_PASSKEY}{timestamp}"
@@ -104,49 +104,60 @@ def query_status(checkout_request_id):
     return response.json()
 
 
-
 # B2C - Send Money to Personal M-Pesa Number
-
-def send_money(phone_number, amount, transaction_desc="Payment", command_id="BusinessPayment"):
-    """
-    Send money from platform to a personal M-Pesa number (B2C).
-    - phone_number: e.g., '254712345678' (no leading '+')
-    """
+def send_money(
+    phone_number, amount, transaction_desc="Payment", command_id="BusinessPayment"
+):
     access_token = _get_access_token()
-    
-    # Encrypt initiator password
-    security_credential = encrypt_initiator_password(
-        settings.MPESA_INITIATOR_PASSWORD,
-        settings.MPESA_PUBLIC_CERT_PATH
-    )
+
+    # Normalize phone number
+    phone_number = phone_number.strip()
+
+    if phone_number.startswith("+254"):
+        phone_number = phone_number[1:]
+    elif phone_number.startswith("0"):
+        phone_number = "254" + phone_number[1:]
+
+    # Unique ID for this B2C request
+    originator_conversation_id = f"RIDE_{uuid.uuid4().hex}"
 
     payload = {
+        "OriginatorConversationID": originator_conversation_id,
         "InitiatorName": settings.MPESA_INITIATOR_NAME,
-        "SecurityCredential": security_credential,
+        "SecurityCredential": settings.MPESA_SECURITY_CREDENTIAL,
         "CommandID": command_id,
         "Amount": int(amount),
         "PartyA": settings.MPESA_B2C_SHORTCODE,
         "PartyB": phone_number,
-        "Remarks": transaction_desc[:50],
-        "QueueTimeOutURL": f"{settings.MPESA_CALLBACK_BASE_URL}/api/v1/mpesa/b2c/timeout",
-        "ResultURL": f"{settings.MPESA_CALLBACK_BASE_URL}/api/v1/mpesa/b2c/result",
-        "Occassion": transaction_desc[:50]
+        "Remarks": transaction_desc[:100],
+        "QueueTimeOutURL": (
+            f"{settings.MPESA_CALLBACK_BASE_URL}" "/api/v1/mpesa/b2c/timeout"
+        ),
+        "ResultURL": (f"{settings.MPESA_CALLBACK_BASE_URL}" "/api/v1/mpesa/b2c/result"),
+        "Occassion": transaction_desc[:100],
     }
 
-    url = f"{settings.MPESA_BASE_URL}/mpesa/b2c/v3/paymentrequest"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.post(url, json=payload, headers=headers)
+    url = f"{settings.MPESA_BASE_URL}" "/mpesa/b2c/v3/paymentrequest"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+
     response.raise_for_status()
+
     return response.json()
+
 
 #  B2C - Send Money to Pochi La Biashara Wallet
 def send_money_to_plb(phone_number, amount, transaction_desc="Payment"):
     """Send money from platform to a Pochi La Biashara wallet (B2Pochi)."""
     access_token = _get_access_token()
-    
+
     security_credential = encrypt_initiator_password(
-        settings.MPESA_INITIATOR_PASSWORD,
-        settings.MPESA_PUBLIC_CERT_PATH
+        settings.MPESA_INITIATOR_PASSWORD, settings.MPESA_PUBLIC_CERT_PATH
     )
 
     payload = {
@@ -159,7 +170,7 @@ def send_money_to_plb(phone_number, amount, transaction_desc="Payment"):
         "Remarks": transaction_desc[:50],
         "QueueTimeOutURL": f"{settings.MPESA_CALLBACK_BASE_URL}/api/v1/mpesa/b2c/timeout",
         "ResultURL": f"{settings.MPESA_CALLBACK_BASE_URL}/api/v1/mpesa/b2c/result",
-        "Occassion": transaction_desc[:50]
+        "Occassion": transaction_desc[:50],
     }
 
     url = f"{settings.MPESA_BASE_URL}/mpesa/b2c/v3/paymentrequest"
@@ -176,10 +187,9 @@ def send_to_till(till_number, amount, account_reference, transaction_desc="Payme
     - till_number: The Till number (e.g., '123456')
     """
     access_token = _get_access_token()
-    
+
     security_credential = encrypt_initiator_password(
-        settings.MPESA_INITIATOR_PASSWORD,
-        settings.MPESA_PUBLIC_CERT_PATH
+        settings.MPESA_INITIATOR_PASSWORD, settings.MPESA_PUBLIC_CERT_PATH
     )
 
     payload = {
@@ -212,10 +222,9 @@ def send_to_paybill(paybill_number, account_number, amount, transaction_desc="Pa
     - account_number: The Account Number (e.g., 'ACC001')
     """
     access_token = _get_access_token()
-    
+
     security_credential = encrypt_initiator_password(
-        settings.MPESA_INITIATOR_PASSWORD,
-        settings.MPESA_PUBLIC_CERT_PATH
+        settings.MPESA_INITIATOR_PASSWORD, settings.MPESA_PUBLIC_CERT_PATH
     )
 
     payload = {
