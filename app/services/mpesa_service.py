@@ -3,6 +3,10 @@ import datetime
 import uuid
 import requests
 from app.core.config import settings
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
 
 
 # HELPER: Get Access Token
@@ -23,20 +27,18 @@ def encrypt_initiator_password(password, cert_path):
     Encrypt the Initiator Password using M-Pesa's public certificate.
     Returns base64 encoded string.
     """
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.backends import default_backend
-
     with open(cert_path, "rb") as f:
         cert_data = f.read()
-
-    cert = serialization.load_pem_x509_certificate(cert_data, default_backend())
+    
+    cert = x509.load_pem_x509_certificate(cert_data, default_backend())
     public_key = cert.public_key()
-
-    encrypted = public_key.encrypt(password.encode("utf-8"), padding.PKCS1v15())
-
-    return base64.b64encode(encrypted).decode("utf-8")
-
+    
+    encrypted = public_key.encrypt(
+        password.encode('utf-8'),
+        padding.PKCS1v15()
+    )
+    
+    return base64.b64encode(encrypted).decode('utf-8')
 
 #  STK Push
 def stk_push(phone_number, amount, account_reference, transaction_desc="Payment"):
@@ -105,9 +107,7 @@ def query_status(checkout_request_id):
 
 
 # B2C - Send Money to Personal M-Pesa Number
-def send_money(
-    phone_number, amount, transaction_desc="Payment", command_id="BusinessPayment"
-):
+def send_money(phone_number, amount, transaction_desc="Payment", command_id="BusinessPayment"):
     access_token = _get_access_token()
 
     # Normalize phone number
@@ -118,13 +118,19 @@ def send_money(
     elif phone_number.startswith("0"):
         phone_number = "254" + phone_number[1:]
 
+    #  Generate Security Credential using the certificate
+    security_credential = encrypt_initiator_password(
+        settings.MPESA_INITIATOR_PASSWORD,
+        settings.MPESA_PUBLIC_CERT_PATH
+    )
+
     # Unique ID for this B2C request
     originator_conversation_id = f"RIDE_{uuid.uuid4().hex}"
 
     payload = {
         "OriginatorConversationID": originator_conversation_id,
         "InitiatorName": settings.MPESA_INITIATOR_NAME,
-        "SecurityCredential": settings.MPESA_SECURITY_CREDENTIAL,
+        "SecurityCredential": security_credential,  #  Now dynamically generated
         "CommandID": command_id,
         "Amount": int(amount),
         "PartyA": settings.MPESA_B2C_SHORTCODE,
@@ -136,6 +142,11 @@ def send_money(
         "ResultURL": (f"{settings.MPESA_CALLBACK_BASE_URL}" "/api/v1/mpesa/b2c/result"),
         "Occassion": transaction_desc[:100],
     }
+    print("=" * 70)
+    print("🔍 B2C PAYLOAD BEING SENT TO M-PESA:")
+    import json
+    print(json.dumps(payload, indent=2))
+    print("=" * 70)
 
     url = f"{settings.MPESA_BASE_URL}" "/mpesa/b2c/v3/paymentrequest"
 
@@ -144,10 +155,18 @@ def send_money(
         "Content-Type": "application/json",
     }
 
+    print(f"📡 URL: {url}")
+    print(f"📡 Headers: {headers}")
+    print("=" * 70)
+
     response = requests.post(url, headers=headers, json=payload, timeout=30)
 
     response.raise_for_status()
 
+    print("=" * 70)
+    print(f"📡 RESPONSE STATUS: {response.status_code}")
+    print(f"📡 RESPONSE BODY: {response.text}")
+    print("=" * 70)
     return response.json()
 
 
