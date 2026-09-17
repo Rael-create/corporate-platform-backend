@@ -37,21 +37,7 @@ def create_app():
     # Initialize migration tool
     migrate.init_app(app, db)
 
-    swagger_config = {
-        "headers": [],
-        "specs": [
-            {
-                "endpoint": "apispec",
-                "route": "/apispec.json",
-                "rule_filter": lambda rule: True,
-                "model_filter": lambda tag: True,
-            }
-        ],
-        "swagger_ui": True,
-        "specs_route": "/docs/"
-    }
-    Swagger(app, config=swagger_config)
-    
+
     # Register blueprints
     register_blueprints(app)
 

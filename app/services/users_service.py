@@ -1,6 +1,5 @@
 import traceback
-
-from pymysql import IntegrityError
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import db
 from app.models.staff import Staff
@@ -14,7 +13,8 @@ ALLOWED_ROLES = [
     "STAFF"
 ]
 
-STAFF_ROLES = [
+PROFILED_ROLES = [
+    "SUPER_ADMIN",
     "CORPORATE_ADMIN",
     "STAFF"
 ]
@@ -39,7 +39,6 @@ def create_user(data):
     try:
         # Create new user
         # if currently logged in user is supe admin ,proceed default
-        # else use cop id of the user
         new_user = User(
             username=data['username'],
             role=data['role'],
@@ -50,13 +49,24 @@ def create_user(data):
         db.session.add(new_user)
         db.session.flush()      # Flush the session to get the user_id without committing yet
 
-        if new_user.role in STAFF_ROLES:
+        # ✅ Initialize so the return statement can't blow up
+        new_staff = None
+
+
+        if new_user.role in PROFILED_ROLES:
             # check email uniqueness
             existing_staff = Staff.query.filter_by(
                 email=data.get('email')
             ).first()
             if existing_staff:
                 raise ValueError("Email already exists.")
+
+            # check phone uniqueness (needed since OTP login uses phone)
+            existing_phone = Staff.query.filter_by(
+                phone_number=data.get('phone_number')
+            ).first()
+            if existing_phone:
+                raise ValueError("Phone number already exists.")
 
                 
             # AFTER creating user ,we need to create a staff profile for the user if the role is STAFF or CORPORATE_ADMIN
@@ -85,11 +95,11 @@ def create_user(data):
         return {
             "message": "User created successfully.",
             "user": user_schema.dump(new_user),
-            "staff": staff_schema.dump(new_staff) if new_user.role in STAFF_ROLES else None
+            "staff": staff_schema.dump(new_staff) if new_staff else None
         }
     except IntegrityError as e:
         db.session.rollback()
-        raise ValueError("Username, email, or staff number already exists.") from e
+        raise ValueError("Username, email, staff number or phone number already exists.") from e
 
     except Exception as e:
         traceback.print_exc()
